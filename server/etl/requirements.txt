@@ -1,0 +1,22 @@
+# Core
+pandas>=2.2,<3.0
+pymongo>=4.10,<5.0
+python-dotenv>=1.0,<2.0
+requests>=2.32,<3.0
+
+# Scraping
+playwright>=1.50,<2.0
+beautifulsoup4>=4.12,<5.0
+# Note: lxml is intentionally NOT included.
+#   - We don't import it directly anywhere.
+#   - BeautifulSoup falls back cleanly to Python's built-in `html.parser`.
+#   - On Python 3.14 + Windows, lxml<6 has no pre-built wheel and source build needs libxml2 + Win SDK.
+#   - If you ever need it later for speed, install separately: `pip install "lxml>=6.1,<7"` (cp314 wheels exist).
+
+# AI / Embeddings
+openai>=1.50,<3.0            # OpenAI Python SDK (embeddings + chat completions)
+tenacity>=9.0,<10.0          # retries
+
+# Utilities
+tqdm>=4.66,<5.0
+rich>=13.9,<14.0             # pretty logging in scripts
