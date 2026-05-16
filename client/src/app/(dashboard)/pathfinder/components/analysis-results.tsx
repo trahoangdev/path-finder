@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTranslations } from "@/contexts/locale-context";
 import type { AnalyzeRequest, AnalyzeResponse } from "@/lib/pathfinder/types";
 import { ProfileCard } from "./profile-card";
 import { GapAnalysisCard } from "./gap-analysis-card";
@@ -61,36 +62,37 @@ export function AnalysisResults({ state }: AnalysisResultsProps) {
 }
 
 function EmptyState() {
+  const t = useTranslations();
   return (
     <Card className="border-dashed bg-muted/30">
       <CardHeader>
-        <CardDescription>How it works</CardDescription>
+        <CardDescription>{t("pathfinder.analysis.howItWorks")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <Compass className="size-4 text-primary" />
-          Run an analysis to see results
+          {t("pathfinder.analysis.runToSee")}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <ol className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
           <Step
             n={1}
-            title="Paste a CV"
-            body="Long-form text works best — summary, experience, skills."
+            title={t("pathfinder.analysis.step1Title")}
+            body={t("pathfinder.analysis.step1Body")}
           />
           <Step
             n={2}
-            title="Pick a target role"
-            body="e.g. AI Engineer, Cloud Engineer, Engineering Manager."
+            title={t("pathfinder.analysis.step2Title")}
+            body={t("pathfinder.analysis.step2Body")}
           />
           <Step
             n={3}
-            title="One orchestrated call"
-            body="OpenAI extracts skills, MongoDB Atlas runs Vector Search + $graphLookup + $facet in parallel."
+            title={t("pathfinder.analysis.step3Title")}
+            body={t("pathfinder.analysis.step3Body")}
           />
           <Step
             n={4}
-            title="Read the plan"
-            body="Profile, gap, three pivot routes, proof of past pivoters, and peer cluster."
+            title={t("pathfinder.analysis.step4Title")}
+            body={t("pathfinder.analysis.step4Body")}
           />
         </ol>
       </CardContent>
@@ -99,9 +101,12 @@ function EmptyState() {
 }
 
 function Step({ n, title, body }: { n: number; title: string; body: string }) {
+  const t = useTranslations();
   return (
     <li className="flex flex-col gap-1 rounded-lg border bg-card p-3">
-      <span className="text-xs font-mono text-primary">Step {n}</span>
+      <span className="text-xs font-mono text-primary">
+        {t("common.step", { n })}
+      </span>
       <span className="text-sm font-medium text-foreground">{title}</span>
       <span className="text-xs">{body}</span>
     </li>
@@ -109,18 +114,18 @@ function Step({ n, title, body }: { n: number; title: string; body: string }) {
 }
 
 function LoadingState() {
+  const t = useTranslations();
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardDescription>Running pipeline</CardDescription>
+          <CardDescription>{t("pathfinder.analysis.runningPipeline")}</CardDescription>
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles className="size-4 animate-pulse text-primary" />
-            Embedding CV + querying MongoDB Atlas…
+            {t("pathfinder.analysis.embedding")}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            First call may take 5–15s while OpenAI embeds the CV. Subsequent
-            calls reuse Mongo&apos;s warmed Atlas Vector Search cache.
+            {t("pathfinder.analysis.loadingHint")}
           </p>
         </CardHeader>
         <CardContent>
@@ -173,21 +178,19 @@ function LoadingState() {
 }
 
 function ErrorState({ message }: { message: string }) {
+  const t = useTranslations();
   return (
     <Card className="border-destructive/40 bg-destructive/5">
       <CardHeader>
         <CardDescription className="text-destructive">
-          Pipeline failed
+          {t("pathfinder.analysis.pipelineFailed")}
         </CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <AlertTriangle className="size-4 text-destructive" />
           {message}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Common causes: server not running on{" "}
-          <code className="rounded bg-muted px-1">localhost:4000</code>, Atlas
-          connection down, or OpenAI quota exhausted. Inspect the server
-          console for details.
+          {t("pathfinder.analysis.errorHint")}
         </p>
       </CardHeader>
     </Card>

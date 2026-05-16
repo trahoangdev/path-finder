@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Database, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "@/contexts/locale-context";
 
 /**
  * Honest Mode primitives — implements F7 from the PRD:
@@ -32,6 +33,9 @@ export interface HonestModeBadgeProps {
 }
 
 export function HonestModeBadge({ n, unit = "data points" }: HonestModeBadgeProps) {
+  const t = useTranslations();
+  const count = n.toLocaleString();
+
   if (n >= HONEST_THRESHOLDS.warn) {
     return (
       <Badge
@@ -39,7 +43,7 @@ export function HonestModeBadge({ n, unit = "data points" }: HonestModeBadgeProp
         className="gap-1 border-emerald-400/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
       >
         <ShieldCheck className="size-3" />
-        Trustworthy · N={n.toLocaleString()}
+        {t("honest.trustworthy", { n: count })}
       </Badge>
     );
   }
@@ -50,7 +54,7 @@ export function HonestModeBadge({ n, unit = "data points" }: HonestModeBadgeProp
         className="gap-1 border-amber-400/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
       >
         <AlertTriangle className="size-3" />
-        Low confidence · N={n.toLocaleString()}
+        {t("honest.lowConfidence", { n: count })}
       </Badge>
     );
   }
@@ -60,7 +64,7 @@ export function HonestModeBadge({ n, unit = "data points" }: HonestModeBadgeProp
       className="gap-1 border-rose-400/60 bg-rose-500/10 text-rose-700 dark:text-rose-300"
     >
       <AlertTriangle className="size-3" />
-      Insufficient data · N={n.toLocaleString()}
+      {t("honest.insufficientData", { n: count })}
     </Badge>
   );
 }
@@ -71,11 +75,12 @@ export interface DataSourceBadgesProps {
 }
 
 export function DataSourceBadges({ sources, className }: DataSourceBadgesProps) {
+  const t = useTranslations();
   if (sources.length === 0) return null;
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}>
       <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <Database className="size-3" /> sources
+        <Database className="size-3" /> {t("honest.sources")}
       </span>
       {sources.map((s) => (
         <Badge
@@ -102,17 +107,22 @@ interface InsufficientDataPlaceholderProps {
  */
 export function InsufficientDataPlaceholder({
   n,
-  title = "Not enough data to recommend",
-  description = "We won't guess. Seed more entries via the ETL (or pick a more populated target) and re-run the analysis.",
+  title,
+  description,
 }: InsufficientDataPlaceholderProps) {
+  const t = useTranslations();
+  const resolvedTitle = title ?? t("honest.notEnoughTitle");
+  const resolvedDescription =
+    description ?? t("honest.notEnoughDescription");
+
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-dashed bg-muted/30 p-4 text-sm">
       <div className="flex items-center gap-2 font-medium">
         <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
-        {title}
+        {resolvedTitle}
       </div>
       <p className="text-muted-foreground">
-        {description} (Current N={n}.)
+        {resolvedDescription} {t("honest.currentN", { n })}
       </p>
     </div>
   );

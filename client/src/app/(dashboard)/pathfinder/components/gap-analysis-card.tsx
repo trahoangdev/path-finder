@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { useTranslations } from "@/contexts/locale-context";
 import type { MissingSkill } from "@/lib/pathfinder/types";
 
 interface GapAnalysisCardProps {
@@ -22,29 +23,25 @@ function pct(value: number) {
 }
 
 export function GapAnalysisCard({ skills }: GapAnalysisCardProps) {
+  const t = useTranslations();
   const top = skills.slice(0, 10);
 
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Gap analysis</CardDescription>
+        <CardDescription>{t("pathfinder.gap.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <Target className="size-4 text-primary" />
-          Missing skills between you and the target role
+          {t("pathfinder.gap.title")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Powered by Atlas Vector Search. Ranked by similarity between
-          <code className="mx-1 rounded bg-muted px-1 text-xs">
-            target − cv
-          </code>
-          embedding and each skill&apos;s description.
+          {t("pathfinder.gap.subtitle")}
         </p>
       </CardHeader>
       <CardContent>
         {top.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No gap detected — your CV already covers this role&apos;s core
-            skills.
+            {t("pathfinder.gap.noGap")}
           </p>
         ) : (
           <div className="flex flex-col">
@@ -66,17 +63,20 @@ export function GapAnalysisCard({ skills }: GapAnalysisCardProps) {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                    <Stat label="similarity" value={pct(skill.similarity)} />
+                    <Stat
+                      label={t("pathfinder.gap.similarity")}
+                      value={pct(skill.similarity)}
+                    />
                     <DemandBar value={skill.vn_demand_score} />
                     {skill.transition?.avg_months ? (
                       <Stat
-                        label="~ pivot"
+                        label={t("pathfinder.gap.pivotMonths")}
                         value={`${Math.round(skill.transition.avg_months)} mo`}
                       />
                     ) : null}
                     {skill.transition?.avg_salary_lift_pct ? (
                       <Stat
-                        label="salary lift"
+                        label={t("pathfinder.gap.salaryLift")}
                         value={`+${Math.round(
                           skill.transition.avg_salary_lift_pct,
                         )}%`}
@@ -121,12 +121,13 @@ function Stat({
 }
 
 function DemandBar({ value }: { value: number }) {
+  const t = useTranslations();
   // VN demand score is 0..100 in our taxonomy seed.
   const v = Math.max(0, Math.min(100, Math.round(value)));
   return (
     <div className="flex min-w-[120px] flex-col">
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        VN demand · {v}
+        {t("pathfinder.gap.vnDemand", { score: v })}
       </span>
       <Progress value={v} className="h-1.5 w-[120px]" />
     </div>

@@ -21,6 +21,7 @@ import type {
   PivotSalaryLift,
   SalaryBandReport,
 } from "@/lib/pathfinder/types";
+import { useTranslations } from "@/contexts/locale-context";
 import { DataSourceBadges, HonestModeBadge } from "./honest-mode";
 
 interface SalaryBandCardProps {
@@ -31,29 +32,21 @@ interface SalaryBandCardProps {
 const LEVEL_ORDER = ["intern", "junior", "mid", "senior", "lead", "manager"];
 
 export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
+  const t = useTranslations();
+
   if (data.total_matches === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardDescription>VN salary band</CardDescription>
+          <CardDescription>{t("pathfinder.salary.description")}</CardDescription>
           <CardTitle className="flex items-center gap-2 text-base">
             <Banknote className="size-4 text-primary" />
-            Market signal for {data.target_role}
+            {t("pathfinder.salary.marketFor", { role: data.target_role })}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No matching JDs in the curated{" "}
-            <code className="rounded bg-muted px-1 text-xs">jobs</code>{" "}
-            collection yet — seed more via{" "}
-            <code className="rounded bg-muted px-1 text-xs">
-              etl/02_scrape_itviec.py
-            </code>{" "}
-            or drop a JSON override at{" "}
-            <code className="rounded bg-muted px-1 text-xs">
-              data/itviec_sample.json
-            </code>
-            .
+            {t("pathfinder.salary.empty")}
           </p>
         </CardContent>
       </Card>
@@ -73,24 +66,20 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>VN salary band</CardDescription>
+        <CardDescription>{t("pathfinder.salary.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <Banknote className="size-4 text-primary" />
-          What {data.target_role}s actually earn in Vietnam
+          {t("pathfinder.salary.title", { role: data.target_role })}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          One MongoDB{" "}
-          <code className="rounded bg-muted px-1 text-xs">$facet</code> over{" "}
-          <code className="rounded bg-muted px-1 text-xs">jobs</code> returns
-          per-level VND range, top companies, and most-requested skills.
-          Trajectory data adds the expected post-pivot lift.
+          {t("pathfinder.salary.subtitle")}
         </p>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-5">
         {/* ─── Honesty header ─────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <HonestModeBadge n={data.total_matches} unit="job listings" />
+          <HonestModeBadge n={data.total_matches} unit={t("pathfinder.salary.unit")} />
           <DataSourceBadges
             sources={[data.source, "career_trajectories"]}
           />
@@ -99,32 +88,32 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
         {/* ─── Topline numbers ─────────────────────────────────────────── */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat
-            label="Matching JDs"
+            label={t("pathfinder.salary.matchingJds")}
             value={data.total_matches.toLocaleString()}
             hint={`source · ${data.source}`}
           />
           {data.overall ? (
             <>
               <Stat
-                label="Median range"
+                label={t("pathfinder.salary.medianRange")}
                 value={`${fmtVnd(data.overall.median_min_vnd)}–${fmtVnd(
                   data.overall.median_max_vnd,
                 )}`}
-                hint="VND million/month"
+                hint={t("pathfinder.salary.vndHint")}
                 accent
               />
               <Stat
-                label="Market floor → cap"
+                label={t("pathfinder.salary.floorCap")}
                 value={`${fmtVnd(data.overall.min_vnd)}–${fmtVnd(
                   data.overall.max_vnd,
                 )}`}
-                hint="full range across listings"
+                hint={t("pathfinder.salary.rangeHint")}
               />
             </>
           ) : null}
           {pivotLift[0] ? (
             <Stat
-              label="Expected lift on pivot"
+              label={t("pathfinder.salary.expectedLift")}
               value={`+${Math.round(pivotLift[0].median_lift_pct * 100) / 100}%`}
               accent
               hint={`avg ${Math.round(pivotLift[0].avg_months)}mo · ${pivotLift[0].sample_size} pivoters`}
@@ -136,7 +125,7 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Briefcase className="size-4 text-muted-foreground" />
-            By seniority
+            {t("pathfinder.salary.byLevel")}
           </div>
           <ul className="flex flex-col gap-2">
             {sortedLevels.map((row) => (
@@ -167,11 +156,13 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
           <section>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Building2 className="size-4 text-muted-foreground" />
-              Top companies hiring
+              {t("pathfinder.salary.topCompanies")}
             </div>
             <ul className="flex flex-col gap-1.5 text-sm">
               {data.top_companies.length === 0 ? (
-                <li className="text-xs text-muted-foreground">No listings.</li>
+                <li className="text-xs text-muted-foreground">
+                  {t("pathfinder.salary.noListings")}
+                </li>
               ) : (
                 data.top_companies.map((c) => (
                   <li
@@ -197,12 +188,12 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
           <section>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Sparkles className="size-4 text-muted-foreground" />
-              Skills most-requested in JDs
+              {t("pathfinder.salary.topSkills")}
             </div>
             <ul className="flex flex-wrap gap-1.5">
               {data.top_required_skills.length === 0 ? (
                 <li className="text-xs text-muted-foreground">
-                  No skills tagged.
+                  {t("pathfinder.salary.noSkills")}
                 </li>
               ) : (
                 data.top_required_skills.map((s) => (
@@ -230,7 +221,7 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
             <section>
               <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                 <TrendingUp className="size-4 text-muted-foreground" />
-                Salary lift after learning the gap skills
+                {t("pathfinder.salary.pivotLift")}
                 <Badge variant="outline" className="ml-auto font-mono text-[10px]">
                   $group · $unwind on career_trajectories
                 </Badge>

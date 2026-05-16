@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useTranslations } from "@/contexts/locale-context";
 import type { SimilarDevsGroup } from "@/lib/pathfinder/types";
 import {
   DataSourceBadges,
@@ -27,6 +28,7 @@ function formatSalary(usd: number | null): string {
 }
 
 export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
+  const t = useTranslations();
   const top = [...groups].sort((a, b) => b.count - a.count).slice(0, 8);
   const max = top.reduce((m, g) => Math.max(m, g.count), 1);
   const totalN = groups.reduce((sum, g) => sum + g.count, 0);
@@ -35,31 +37,30 @@ export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Similar developers</CardDescription>
+        <CardDescription>{t("pathfinder.similar.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <UserCircle2 className="size-4 text-primary" />
-          What roles do people with your stack actually end up in?
+          {t("pathfinder.similar.title")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Cosine search over career-trajectory embeddings, grouped by current
-          role.
+          {t("pathfinder.similar.subtitle")}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <HonestModeBadge n={totalN} unit="similar devs" />
+          <HonestModeBadge n={totalN} unit={t("pathfinder.similar.unit")} />
           <DataSourceBadges sources={["synthetic_vn_cohort", "vec_trajectory_snapshot"]} />
         </div>
 
         {hide ? (
           <InsufficientDataPlaceholder
             n={totalN}
-            title="Not enough peers to cluster"
-            description="The trajectory cohort matching your stack is too small to surface a meaningful role distribution. Try a more populated start skill or seed more rows in the ETL."
+            title={t("pathfinder.similar.insufficientTitle")}
+            description={t("pathfinder.similar.insufficientDescription")}
           />
         ) : top.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No similar developers found in this slice of the data.
+            {t("pathfinder.similar.none")}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -70,7 +71,11 @@ export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-medium">{group.role}</span>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-                      <span>{group.count.toLocaleString()} devs</span>
+                      <span>
+                        {t("pathfinder.similar.devCount", {
+                          count: group.count.toLocaleString(),
+                        })}
+                      </span>
                       <span className="font-medium text-foreground">
                         {formatSalary(group.avg_salary_usd)}
                       </span>

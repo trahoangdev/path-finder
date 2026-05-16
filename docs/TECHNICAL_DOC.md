@@ -46,7 +46,7 @@ Một **AI Career Coach** dành riêng cho dev VN muốn pivot stack. Mọi gợ
 | Năng lực | Câu hỏi user trả lời | Kỹ thuật MongoDB |
 |----------|----------------------|-------------------|
 | **Gap Analysis** | *"Tôi đang thiếu skill gì để vào target role?"* | **Vector Search** |
-| **Pivot Path Discovery** | *"Skill nào học trước, skill nào học sau, mất bao lâu?"* | **Aggregation Pipeline (`$graphLookup`)** |
+| **Pivot Path Discovery** | *"Skill nào học trước, skill nào học sau, mất bao lâu?"* | **Aggregation** (`$match`/`$sort` on `skill_transitions`; optional `$graphLookup`) |
 | **Proof & Salary** | *"Bao nhiêu người giống tôi đã làm được? Lương lên bao nhiêu?"* | **Aggregation (`$group`, `$facet`)** |
 
 ### 1.3 Differentiator chính
@@ -67,7 +67,7 @@ Một **AI Career Coach** dành riêng cho dev VN muốn pivot stack. Mọi gợ
 | F1 | CV Input + Skill Extraction | Paste CV → LLM extract structured skills |
 | F2 | Target Role Selection | 12 preset roles + custom |
 | F3 | **Gap Analysis** | Vector Search: thiếu skill nào để vào target |
-| F4 | **Pivot Path Recommendation** | 3 paths Fast/Balanced/Comprehensive (via `$graphLookup`) |
+| F4 | **Pivot Path Recommendation** | 3 paths Fast/Balanced/Comprehensive (`skill_transitions` + optional `$graphLookup`) |
 | F5 | **Trajectory Graph** | `@xyflow/react` visualization (3 flavor swimlanes, pan/zoom/minimap) |
 | F6 | **Proof Drawer** | Evidence card cho từng recommendation |
 | F7 | VN Salary Band | Hiển thị salary range theo ITViec data |
@@ -614,505 +614,491 @@ flowchart LR
 
 ## 4. Vector Search & Aggregation Pipeline — Cách Áp dụng
 
+Phần này mô tả **đúng implementation hiện tại** trong `server/src/` (không phải bản thiết kế PRD ban đầu). Mỗi use case gắn file nguồn để BGK đối chiếu repo.
+
+### 4.0 Bản đồ implementation (file ↔ MongoDB technique)
+
+| UC | Endpoint / caller | File service | Collection chính | Kỹ thuật nổi bật |
+|----|-------------------|--------------|------------------|-------------------|
+| UC-1 | `POST /api/analyze` | `services/vector-search/skills.ts` | `skill_transitions`, `skills` | `$lookup` + `$vectorSearch` + merge |
+| UC-2 | Phase 2 orchestrator | `services/vector-search/courses.ts` | `courses` | `$vectorSearch` + `$addFields` hybrid rank |
+| UC-3 | Phase 1 orchestrator | `services/vector-search/similar-devs.ts` | `career_trajectories` | `$vectorSearch` **hoặc** `$setIntersection` fallback |
+| UC-4 | Phase 1 orchestrator | `services/aggregations/pivot-path.ts` | `skill_transitions` | `$match`/`$sort` + synthesis; `$graphLookup` optional |
+| UC-5 | Phase 2 orchestrator | `services/aggregations/salary-inference.ts` | `career_trajectories` | `$unwind` + `$group` + `$avg` |
+| UC-6 | Phase 1 orchestrator | `services/aggregations/proof-drawer.ts` | `career_trajectories` | `$facet` (5 sub-pipelines) |
+| UC-7 | Phase 2 orchestrator | `services/aggregations/salary-band.ts` | `jobs` | `$match` + `$facet` (4 facets) |
+| ETL | Offline | `etl/07_compute_transitions.py` | `career_trajectories` → `skill_transitions` | `$group` + `$out` |
+
+Orchestrator: `routes/orchestrator.ts` — Phase 1 chạy `Promise.all` (gap, paths, proof, similar); Phase 2 chạy song song (courses, salary band, salary inference).
+
 ### 4.1 Use Case Map
 
 | # | Use Case | Vector Search | Aggregation Pipeline | Section |
 |---|----------|:-:|:-:|---|
-| UC-1 | **Gap Analysis** (skill nào còn thiếu để vào target role) | ✓ | | 4.2 |
-| UC-2 | **Course Matching** (course nào lấp gap) | ✓ | | 4.3 |
-| UC-3 | **Similar Devs Lookup** (ai giống mình) | ✓ | | 4.4 |
-| UC-4 | **Pivot Path Discovery** (lộ trình từ A → Z) | | ✓ `$graphLookup` | 4.5 |
-| UC-5 | **Salary Inference** (lương trung vị mỗi path) | | ✓ `$group` + `$bucket` | 4.6 |
-| UC-6 | **Proof Drawer Evidence** (N, conversion %, examples) | | ✓ `$facet` | 4.7 |
-| UC-7 | **Hybrid: Skill rec dựa trên both** | ✓ | ✓ | 4.8 |
+| UC-1 | **Gap Analysis** (thiếu skill gì để vào target role) | ✓ semantic | ✓ evidence (`$lookup`) | 4.2 |
+| UC-2 | **Course Matching** (course lấp gap) | ✓ | ✓ hybrid `$sort` | 4.3 |
+| UC-3 | **Similar Devs** (dev giống mình đang ở role nào) | ✓ primary | ✓ fallback overlap | 4.4 |
+| UC-4 | **Pivot Paths** (3 lộ trình Fast/Balanced/Comprehensive) | | ✓ edges + optional `$graphLookup` | 4.5 |
+| UC-5 | **Salary Inference** (lift sau khi học gap skills) | | ✓ `$unwind` + `$group` | 4.6 |
+| UC-6 | **Proof Drawer** (N, conversion, examples) | | ✓ `$facet` | 4.7 |
+| UC-7 | **VN Salary Band** (JD VN theo level/company) | | ✓ `$facet` on `jobs` | 4.8 |
 
-### 4.2 UC-1 — Gap Analysis (Vector Search)
+### 4.2 UC-1 — Gap Analysis (Evidence + Vector Search hybrid)
 
-**Câu hỏi:** *"User CV vs Target role MLE — họ thiếu skill gì?"*
+**Câu hỏi:** *"User muốn vào AI Engineer — còn thiếu skill gì?"*
 
-**Idea:**
-1. Embed CV của user (đã có `cv_embedding`).
-2. Embed mô tả target role (đã có `target_embedding`).
-3. Tính **gap vector** = `target_embedding - cv_embedding` (semantic difference).
-4. Tìm top-K skills trong `skills` collection **gần gap vector nhất** = đó là missing skills.
+**File:** `server/src/services/vector-search/skills.ts`
 
-**Implementation:**
+**Chiến lược (2 nhánh song song, merge trong application code):**
+
+| Nhánh | Collection | Kỹ thuật | Vai trò |
+|-------|------------|----------|---------|
+| **Evidence-first** | `skill_transitions` → `$lookup` `skills` | Aggregation | Skills đã **thực sự** giúp dev pivot vào `target_role` (frequency, months, lift) |
+| **Semantic** | `skills` | `$vectorSearch` trên `target_embedding` | Bổ sung khi evidence sparse hoặc target role tự do |
+
+`cv_embedding` vẫn được orchestrator embed (dùng cho similar devs), nhưng **gap list không dùng phép trừ vector** — semantic search chạy trực tiếp trên embedding của **target prompt** (role + stack hints).
+
+**Pipeline A — Evidence (`evidenceGap`):**
 
 ```javascript
-// File: app/api/gap-analysis/route.ts
-async function gapAnalysis(cvEmbedding, targetEmbedding) {
-  const gapVector = targetEmbedding.map((v, i) => v - cvEmbedding[i]);
-
-  return db.collection("skills").aggregate([
-    {
-      $vectorSearch: {
-        index: "vec_skills_desc",
-        path: "description_embedding",
-        queryVector: gapVector,
-        numCandidates: 100,
-        limit: 10,
-        filter: {
-          category: { $in: ["framework", "tool", "concept"] },
-          is_emerging: true       // ưu tiên skill đang trending
-        }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        name: 1,
-        category: 1,
-        description: 1,
-        vn_demand_score: 1,
-        similarity: { $meta: "vectorSearchScore" }
-      }
-    },
-    {
-      $lookup: {
-        from: "skill_transitions",
-        let: { skillName: "$name" },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$to_skill", "$$skillName"] } } },
-          { $sort: { frequency: -1 } },
-          { $limit: 1 }
-        ],
-        as: "transition_info"
-      }
-    },
-    { $addFields: { transition: { $arrayElemAt: ["$transition_info", 0] } } },
-    { $project: { transition_info: 0 } }
-  ]).toArray();
-}
-```
-
-**Output mẫu:**
-```json
-[
+// skill_transitions: edges (from_skill → to_skill) where to_skill = canonical target role
+db.skill_transitions.aggregate([
+  { $match: { to_skill: targetRole } },
+  { $sort: { frequency: -1, avg_salary_lift_pct: -1 } },
+  { $limit: limit * 2 },
   {
-    "name": "MLflow",
-    "category": "tool",
-    "similarity": 0.847,
-    "vn_demand_score": 0.62,
-    "transition": { "avg_months": 6, "avg_salary_lift_pct": 18 }
+    $lookup: {
+      from: "skills",
+      let: { skName: "$from_skill" },
+      pipeline: [
+        { $match: { $expr: { $eq: ["$name", "$$skName"] } } },
+        { $limit: 1 },
+        { $project: { description: 1, category: 1, vn_demand_score: 1 } }
+      ],
+      as: "skill_info"
+    }
   },
+  { $addFields: { skill_info: { $arrayElemAt: ["$skill_info", 0] } } }
+]);
+```
+
+**Pipeline B — Semantic (`semanticGap`):**
+
+```javascript
+db.skills.aggregate([
   {
-    "name": "Vector Databases",
-    "category": "concept",
-    "similarity": 0.819,
-    "vn_demand_score": 0.71,
-    "transition": { "avg_months": 4, "avg_salary_lift_pct": 22 }
-  }
-]
-```
-
-**Tại sao kỹ thuật này hay?**
-- **Vector arithmetic** (target - current = gap) là technique kinh điển trong NLP nhưng ít team Hackathon nghĩ áp dụng vào career.
-- Filter `category` + `is_emerging` là **hybrid pre-filter** của Atlas Vector Search — cho thấy bạn nắm vững advanced feature.
-
-### 4.3 UC-2 — Course Matching (Vector Search hybrid)
-
-**Câu hỏi:** *"Skill thiếu = MLflow. Course nào dạy tốt nhất?"*
-
-```javascript
-async function courseRecommendation(skillName, skillEmbedding) {
-  return db.collection("courses").aggregate([
-    {
-      $vectorSearch: {
-        index: "vec_courses_desc",
-        path: "description_embedding",
-        queryVector: skillEmbedding,
-        numCandidates: 50,
-        limit: 5,
-        filter: {
-          $or: [
-            { is_mongodb_official: true },     // ưu tiên course official MongoDB
-            { price_usd: 0 }                   // hoặc course free
-          ]
-        }
-      }
-    },
-    {
-      $match: {
-        skills_taught: skillName             // post-filter chính xác
-      }
-    },
-    {
-      $project: {
-        title: 1,
-        provider: 1,
-        url: 1,
-        price_usd: 1,
-        duration_hours: 1,
-        rating: 1,
-        is_mongodb_official: 1,
-        similarity: { $meta: "vectorSearchScore" }
-      }
-    },
-    { $limit: 3 }
-  ]).toArray();
-}
-```
-
-**Note:** Việc dùng `filter` (pre-filter trong vector search) **+** `$match` (post-filter) là pattern best practice — pre-filter giảm candidate pool, post-filter đảm bảo chính xác.
-
-### 4.4 UC-3 — Similar Devs Lookup (Vector Search)
-
-**Câu hỏi:** *"Show me devs giống tôi 18 tháng trước, giờ họ ở đâu."*
-
-```javascript
-async function similarDevs(cvEmbedding) {
-  return db.collection("career_trajectories").aggregate([
-    {
-      $vectorSearch: {
-        index: "vec_trajectory_snapshot",   // index trên snapshot.cv_embedding
-        path: "snapshots.cv_embedding",
-        queryVector: cvEmbedding,
-        numCandidates: 200,
-        limit: 50,
-        filter: {
-          country: { $in: ["Vietnam", "Singapore", "SEA"] }
-        }
-      }
-    },
-    {
-      $project: {
-        anon_id: 1,
-        current_role: 1,
-        total_years_exp: 1,
-        comp_total_usd: 1,
-        starting_role: { $first: "$snapshots.role" },
-        latest_role: { $last: "$snapshots.role" },
-        similarity: { $meta: "vectorSearchScore" }
-      }
-    },
-    {
-      $group: {
-        _id: "$current_role",
-        count: { $sum: 1 },
-        avg_salary: { $avg: "$comp_total_usd" },
-        examples: { $push: { anon_id: "$anon_id", years: "$total_years_exp" } }
-      }
-    },
-    { $sort: { count: -1 } },
-    { $limit: 5 }
-  ]).toArray();
-}
-```
-
-**Output mẫu (hiển thị trong "People Like You" card):**
-```json
-[
-  { "_id": "ML Engineer",   "count": 23, "avg_salary": 42000 },
-  { "_id": "MLOps Engineer", "count": 18, "avg_salary": 48000 },
-  { "_id": "AI Backend Eng", "count": 15, "avg_salary": 38000 }
-]
-```
-
-### 4.5 UC-4 — Pivot Path Discovery (Aggregation `$graphLookup`) ⭐
-
-**Câu hỏi:** *"Lộ trình tối ưu từ Java BE → MLE qua những skill nào?"*
-
-Đây là **WOW moment** của hackathon — ít team biết MongoDB hỗ trợ graph traversal native.
-
-```javascript
-async function pivotPath(startSkill, targetSkill, maxDepth = 4) {
-  return db.collection("skill_transitions").aggregate([
-    { $match: { from_skill: startSkill, confidence: { $in: ["high", "medium"] } } },
-    {
-      $graphLookup: {
-        from: "skill_transitions",
-        startWith: "$to_skill",
-        connectFromField: "to_skill",
-        connectToField: "from_skill",
-        as: "path_edges",
-        maxDepth: maxDepth,
-        depthField: "depth",
-        restrictSearchWithMatch: {
-          confidence: { $in: ["high", "medium"] },
-          frequency: { $gte: 10 }
-        }
-      }
-    },
-    {
-      $match: {
-        "path_edges.to_skill": targetSkill   // chỉ giữ path tới được target
-      }
-    },
-    {
-      $addFields: {
-        full_path: {
-          $concatArrays: [
-            [{ from_skill: "$from_skill", to_skill: "$to_skill", depth: 0,
-               months: "$avg_months", lift: "$avg_salary_lift_pct" }],
-            "$path_edges"
-          ]
-        },
-        total_months: {
-          $add: [
-            "$avg_months",
-            { $sum: "$path_edges.avg_months" }
-          ]
-        },
-        total_lift_pct: {
-          $sum: ["$avg_salary_lift_pct", { $sum: "$path_edges.avg_salary_lift_pct" }]
-        },
-        min_confidence_in_path: {
-          $min: { $concatArrays: [["$confidence"], "$path_edges.confidence"] }
-        }
-      }
-    },
-    { $sort: { total_months: 1 } },
-    { $limit: 3 },     // top 3 path: Fast / Balanced / Comprehensive
-    {
-      $project: {
-        full_path: 1,
-        total_months: 1,
-        total_lift_pct: 1,
-        min_confidence_in_path: 1,
-        path_length: { $size: "$full_path" }
-      }
+    $vectorSearch: {
+      index: "vec_skills_desc",
+      path: "description_embedding",
+      queryVector: targetEmbedding,   // rich target-role prompt, NOT gap vector
+      numCandidates: 400,
+      limit: 60,
+      filter: { category: { $in: ["framework", "tool", "concept", "cloud", "language"] } }
     }
-  ]).toArray();
-}
-```
-
-**Kỹ thuật nổi bật:**
-- `$graphLookup` recursive đi qua skill graph max 4 hops.
-- `restrictSearchWithMatch` filter trong khi traverse — performance critical.
-- `depthField` cho biết skill thứ N trong path.
-- Post-process chọn top 3 path theo `total_months` (Fast = nhanh nhất).
-
-**Output mẫu (sẽ render thành 3 path card):**
-```json
-[
+  },
+  // Post-filter: denylist roadmap.sh junk (titles with "?", "Intro", Sanity IDs, …)
+  { $match: { /* $and: [ $not regex filters … ] */ } },
+  { $project: { name: 1, category: 1, description: 1, similarity: { $meta: "vectorSearchScore" } } },
   {
-    "full_path": [
-      { "from_skill": "Java", "to_skill": "Python", "depth": 0, "months": 3 },
-      { "from_skill": "Python", "to_skill": "PyTorch", "depth": 1, "months": 4 },
-      { "from_skill": "PyTorch", "to_skill": "MLOps", "depth": 2, "months": 5 }
-    ],
-    "total_months": 12,
-    "total_lift_pct": 38,
-    "min_confidence_in_path": "high",
-    "path_length": 3
-  }
-]
-```
-
-### 4.6 UC-5 — Salary Inference (Aggregation `$group` + `$bucket`)
-
-**Câu hỏi:** *"Sau khi học MLflow + LangChain, lương trung vị tăng bao nhiêu?"*
-
-```javascript
-async function salaryInference(skillsLearned) {
-  return db.collection("career_trajectories").aggregate([
-    {
-      $match: {
-        country: { $in: ["Vietnam", "Singapore"] },
-        "pivots_detected.skill_added": { $all: skillsLearned }
-      }
-    },
-    { $unwind: "$pivots_detected" },
-    { $match: { "pivots_detected.skill_added": { $all: skillsLearned } } },
-    {
-      $group: {
-        _id: "$pivots_detected.to_role",
-        sample_size: { $sum: 1 },
-        avg_months: { $avg: "$pivots_detected.months_taken" },
-        median_lift: { $avg: "$pivots_detected.salary_lift_pct" },  // approximation
-        salary_distribution: {
-          $push: "$pivots_detected.salary_lift_pct"
-        }
-      }
-    },
-    {
-      $bucket: {
-        groupBy: "$median_lift",
-        boundaries: [0, 10, 20, 30, 50, 100],
-        default: "100+",
-        output: {
-          roles: { $push: { role: "$_id", n: "$sample_size", lift: "$median_lift" } }
-        }
-      }
+    $lookup: {
+      from: "skill_transitions",
+      let: { skillName: "$name" },
+      pipeline: [
+        { $match: { $expr: { $eq: ["$from_skill", "$$skillName"] } } },
+        { $sort: { frequency: -1 } },
+        { $limit: 1 }
+      ],
+      as: "transition_info"
     }
-  ]).toArray();
-}
+  }
+]);
 ```
 
-### 4.7 UC-6 — Proof Drawer Evidence (Aggregation `$facet`)
+**Merge (TypeScript):** `[...evidence, ...semantic]` → dedupe theo `name` → loại skills user đã có → cap `limit`. Evidence thắng khi trùng tên.
 
-**Câu hỏi:** *"Cho tôi xem evidence trong 1 query: N, conversion rate, salary band, 3 example profiles."*
+**Tại sao approach này mạnh hơn gap-vector thuần?**
+- Evidence gắn **cohort thật** (`frequency`, `avg_months`) — phù hợp Honest Mode.
+- Semantic vẫn cover target role mới / sparse graph.
+- `$lookup` chéo collection trong cùng request gap = hybrid Vector + Aggregation trong một feature.
+
+### 4.3 UC-2 — Course Matching (Vector Search + hybrid re-rank)
+
+**Câu hỏi:** *"Skill thiếu = LangChain. Course nào dạy tốt nhất?"*
+
+**File:** `server/src/services/vector-search/courses.ts`
+
+Orchestrator embed mô tả skill (`embedBatch` top-3 missing skills), rồi gọi `recommendCourses` **mỗi skill một pipeline**.
 
 ```javascript
-async function proofDrawer(fromRole, toRole, skillsLearned) {
-  return db.collection("career_trajectories").aggregate([
-    {
-      $match: {
-        "snapshots.role": fromRole,
-        "pivots_detected.to_role": toRole
-      }
-    },
-    {
-      $facet: {
-        sample_size: [
-          { $count: "n" }
-        ],
-        conversion_rate: [
-          {
-            $group: {
-              _id: null,
-              total_with_intent: {
-                $sum: { $cond: [{ $in: [toRole, "$snapshots.skills_want"] }, 1, 0] }
-              },
-              total_completed: {
-                $sum: { $cond: [{ $eq: ["$current_role", toRole] }, 1, 0] }
-              }
-            }
-          },
-          {
-            $project: {
-              rate: { $divide: ["$total_completed", "$total_with_intent"] }
-            }
-          }
-        ],
-        salary_stats: [
-          { $unwind: "$pivots_detected" },
-          { $match: { "pivots_detected.to_role": toRole } },
-          {
-            $group: {
-              _id: null,
-              median_lift: { $avg: "$pivots_detected.salary_lift_pct" },
-              min_lift: { $min: "$pivots_detected.salary_lift_pct" },
-              max_lift: { $max: "$pivots_detected.salary_lift_pct" },
-              avg_months: { $avg: "$pivots_detected.months_taken" }
-            }
-          }
-        ],
-        example_profiles: [
-          { $match: { "pivots_detected.to_role": toRole } },
-          { $sample: { size: 3 } },                       // random 3 example
-          {
-            $project: {
-              anon_id: 1,
-              starting_role: { $first: "$snapshots.role" },
-              current_role: 1,
-              total_years_exp: 1,
-              ed_level: 1,
-              source: 1
-            }
-          }
-        ],
-        confidence_calc: [
-          { $count: "n" },
-          {
-            $project: {
-              level: {
-                $switch: {
-                  branches: [
-                    { case: { $gte: ["$n", 100] }, then: "high" },
-                    { case: { $gte: ["$n", 30] },  then: "medium" }
-                  ],
-                  default: "low"
-                }
-              }
-            }
-          }
+db.courses.aggregate([
+  {
+    $vectorSearch: {
+      index: "vec_courses_desc",
+      path: "description_embedding",
+      queryVector: skillEmbedding,
+      numCandidates: 100,
+      limit: 15,
+      filter: {
+        $or: [
+          { is_mongodb_official: true },
+          { price_usd: 0 },
+          { price_usd: { $lte: 50 } }
         ]
       }
     }
-  ]).toArray();
-}
-```
-
-**Output single-query (render trực tiếp UI Proof Drawer):**
-```json
-{
-  "sample_size": [{ "n": 89 }],
-  "conversion_rate": [{ "rate": 0.75 }],
-  "salary_stats": [{ "median_lift": 28, "min_lift": 8, "max_lift": 65, "avg_months": 18 }],
-  "example_profiles": [
-    { "anon_id": "a1b2c3", "starting_role": "Backend Dev", "current_role": "MLE", "total_years_exp": 6 },
-    ...
-  ],
-  "confidence_calc": [{ "level": "medium" }]
-}
-```
-
-**Tại sao `$facet` mạnh ở đây:**
-- 5 metric tính trong **1 lần round-trip** thay vì 5 query → P95 latency thấp.
-- Mỗi facet độc lập, dễ test/debug.
-- Show off advanced aggregation pattern cho BGK.
-
-### 4.8 UC-7 — Hybrid: Recommend kết hợp Vector + Aggregation
-
-**Câu hỏi:** *"Top 3 skill nên học tiếp = high semantic relevance AND high VN demand AND high historical success."*
-
-```javascript
-async function hybridSkillRecommendation(cvEmbedding, currentRole) {
-  return db.collection("skills").aggregate([
-    {
-      $vectorSearch: {
-        index: "vec_skills_desc",
-        path: "description_embedding",
-        queryVector: cvEmbedding,
-        numCandidates: 200,
-        limit: 50,
-        filter: { is_emerging: true }
-      }
-    },
-    {
-      $addFields: { semantic_score: { $meta: "vectorSearchScore" } }
-    },
-    {
-      $lookup: {
-        from: "skill_transitions",
-        let: { skillName: "$name", role: currentRole },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$to_skill", "$$skillName"] } } },
-          { $sort: { frequency: -1 } },
-          { $limit: 1 },
-          { $project: { frequency: 1, avg_salary_lift_pct: 1, avg_months: 1 } }
-        ],
-        as: "transition"
-      }
-    },
-    {
-      $addFields: {
-        transition: { $arrayElemAt: ["$transition", 0] }
-      }
-    },
-    {
-      $addFields: {
-        hybrid_score: {
-          $add: [
-            { $multiply: ["$semantic_score", 0.4] },
-            { $multiply: ["$vn_demand_score", 0.3] },
-            { $multiply: [{ $ifNull: ["$transition.avg_salary_lift_pct", 0] }, 0.003] }, // normalize
-            { $multiply: [{ $divide: [1, { $add: [{ $ifNull: ["$transition.avg_months", 24] }, 1] }] }, 5] } // shorter=better
-          ]
-        }
-      }
-    },
-    { $sort: { hybrid_score: -1 } },
-    { $limit: 3 },
-    {
-      $project: {
-        name: 1,
-        category: 1,
-        description: 1,
-        semantic_score: 1,
-        vn_demand_score: 1,
-        transition: 1,
-        hybrid_score: 1
+  },
+  {
+    $addFields: {
+      similarity: { $meta: "vectorSearchScore" },
+      exact_match: {
+        $cond: [{ $in: [skillName, { $ifNull: ["$skills_taught", []] }] }, 1, 0]
       }
     }
-  ]).toArray();
-}
+  },
+  {
+    $addFields: {
+      token_match: {
+        $cond: [
+          { $regexMatch: { input: { $concat: [lowerTitle, " ", lowerDesc] }, regex: tokens } },
+          1, 0
+        ]
+      }
+    }
+  },
+  { $sort: { exact_match: -1, token_match: -1, similarity: -1 } },
+  { $limit: 3 }
+]);
 ```
 
-**Kỹ thuật nổi bật:**
-- Vector Search + `$lookup` JOIN logic trong 1 pipeline.
-- Multi-signal ranking với weighted sum — show off ranking expertise.
+**Lưu ý thiết kế:** Không `$match` cứng `skills_taught: skillName` — catalog dùng tên canonical ("MongoDB Vector Search") trong khi gap có thể trả "Vector Databases". Vector similarity + token boost giữ recall cao mà vẫn ưu tiên exact match khi có.
+
+### 4.4 UC-3 — Similar Devs (Vector Search primary + Aggregation fallback)
+
+**Câu hỏi:** *"Dev có stack giống tôi thường kết thúc ở role nào?"*
+
+**File:** `server/src/services/vector-search/similar-devs.ts`
+
+**Path 1 — Vector Search (khi `snapshots.cv_embedding` đã được ETL embed):**
+
+```javascript
+db.career_trajectories.aggregate([
+  {
+    $vectorSearch: {
+      index: "vec_trajectory_snapshot",
+      path: "snapshots.cv_embedding",
+      queryVector: cvEmbedding,
+      numCandidates: limit * 4,
+      limit: limit,
+      filter: { country: { $in: ["Vietnam", "Singapore", "SEA", …] } }
+    }
+  },
+  {
+    $group: {
+      _id: "$current_role",
+      count: { $sum: 1 },
+      avg_salary_usd: { $avg: "$comp_total_usd" }
+    }
+  },
+  { $sort: { count: -1 } },
+  { $limit: 8 }
+]);
+```
+
+Nếu pipeline trả về **0 group** (hoặc index chưa có data) → fall through.
+
+**Path 2 — Aggregation fallback (chạy trên seed hiện tại):**
+
+```javascript
+db.career_trajectories.aggregate([
+  {
+    $match: {
+      country: { $in: ["Vietnam", "Singapore", …] },
+      $or: [
+        { "snapshots.role": startRole },
+        { "snapshots.skills_have": { $in: userSkills } }
+      ]
+    }
+  },
+  {
+    $addFields: {
+      all_skills: {
+        $reduce: {
+          input: "$snapshots.skills_have",
+          initialValue: [],
+          in: { $setUnion: ["$$value", "$$this"] }
+        }
+      }
+    }
+  },
+  {
+    $addFields: {
+      skill_overlap: { $size: { $setIntersection: ["$all_skills", userSkills] } }
+    }
+  },
+  { $match: { skill_overlap: { $gte: 1 } } },
+  { $sort: { skill_overlap: -1, total_years_exp: -1 } },
+  { $limit: limit },
+  {
+    $group: {
+      _id: "$current_role",
+      count: { $sum: 1 },
+      avg_salary_usd: { $avg: "$comp_total_usd" }
+    }
+  },
+  { $sort: { count: -1 } },
+  { $limit: 8 }
+]);
+```
+
+**Output UI:** bar chart theo `current_role` + `count` + `avg_salary_usd` (card Similar Developers).
+
+### 4.5 UC-4 — Pivot Path Discovery (Direct edges + optional `$graphLookup`)
+
+**Câu hỏi:** *"Lộ trình từ stack hiện tại → AI Engineer qua skill nào, mất bao lâu?"*
+
+**File:** `server/src/services/aggregations/pivot-path.ts`
+
+**Data model thực tế:** ETL seed `skill_transitions` dạng **(from_skill → to_role)** — mỗi edge là một skill giúp pivot **vào** target role, không phải chuỗi skill→skill nhiều hop. Vì vậy production path **không phụ thuộc** `$graphLookup` để trả kết quả.
+
+**Bước 1 — Lấy direct edges (Aggregation):**
+
+```javascript
+db.skill_transitions.aggregate([
+  { $match: { to_skill: targetSkill } },   // canonical target role label
+  { $sort: { frequency: -1 } },
+  { $limit: 30 }
+]);
+```
+
+**Bước 2 — Optional `$graphLookup` (demo / future multi-hop graph):**
+
+```javascript
+// Chạy thử khi graph có skill→skill chains; với seed hiện tại thường trả rỗng.
+db.skill_transitions.aggregate([
+  { $match: { from_skill: { $in: [startSkill, ...userSkills] } } },
+  {
+    $graphLookup: {
+      from: "skill_transitions",
+      startWith: "$to_skill",
+      connectFromField: "to_skill",
+      connectToField: "from_skill",
+      as: "downstream",
+      maxDepth: 4,
+      depthField: "depth",
+      restrictSearchWithMatch: { confidence: { $in: ["high", "medium", "low"] } }
+    }
+  },
+  { $limit: 1 }
+]);
+```
+
+**Bước 3 — Synthesize 3 flavors (application logic, không thêm query):**
+
+| Flavor | Cách chọn edge | Path shape |
+|--------|----------------|------------|
+| **Fast** | `avg_months` thấp nhất | 1 hop: start → skill → target |
+| **Balanced** | max `(lift / months) × log10(frequency)` | 1 hop, trade-off tốt |
+| **Comprehensive** | top-3 `frequency`, dedupe skill | multi-hop chain qua 2–3 skills |
+
+UI: tab list (`pivot-paths-card.tsx`) + swimlane graph (`trajectory-graph-card.tsx`, `@xyflow/react`).
+
+**Kỹ thuật showcase cho BGK:**
+- Pre-computed graph + **$match/$sort** cho latency ổn định.
+- `$graphLookup` vẫn có trong codebase — sẵn sàng khi ETL enrich thêm skill→skill edges.
+- Honest labeling: graph hiển thị edge metrics từ cohort, không invent path khi DB sparse.
+
+### 4.6 UC-5 — Salary Inference sau pivot (Aggregation `$unwind` + `$group`)
+
+**Câu hỏi:** *"Sau khi học các gap skills, cohort pivot sang role nào và lift bao nhiêu?"*
+
+**File:** `server/src/services/aggregations/salary-inference.ts`
+
+Input: top missing skill names từ UC-1. Pipeline:
+
+```javascript
+db.career_trajectories.aggregate([
+  { $match: { country: { $in: ["Vietnam", "Singapore", "SEA"] } } },
+  { $unwind: "$pivots_detected" },
+  { $match: { "pivots_detected.skill_added": { $all: skillsLearned } } },
+  {
+    $group: {
+      _id: "$pivots_detected.to_role",
+      sample_size: { $sum: 1 },
+      avg_months: { $avg: "$pivots_detected.months_taken" },
+      median_lift: { $avg: "$pivots_detected.salary_lift_pct" }
+    }
+  },
+  { $match: { sample_size: { $gte: 3 } } },
+  { $sort: { median_lift: -1 } },
+  { $limit: 10 }
+]);
+```
+
+Hiển thị trên **Salary Band card** (bảng "Salary lift after learning the gap skills"). Không dùng `$bucket` — grouping theo `to_role` đủ cho MVP.
+
+### 4.7 UC-6 — Proof Drawer (Aggregation `$facet`)
+
+**Câu hỏi:** *"Có bao nhiêu dev từ role A đã pivot sang role B? Lift bao nhiêu? Cho 3 ví dụ."*
+
+**File:** `server/src/services/aggregations/proof-drawer.ts`
+
+**Match cohort:** devs từng có `snapshots.role === from_role` (canonical, sau `role-normalizer`).
+
+```javascript
+db.career_trajectories.aggregate([
+  { $match: { "snapshots.role": fromRole } },
+  {
+    $facet: {
+      sample_size: [
+        { $match: { "pivots_detected.to_role": toRole } },
+        { $count: "n" }
+      ],
+      conversion: [
+        {
+          $group: {
+            _id: null,
+            total_with_intent: { $sum: 1 },
+            total_completed: {
+              $sum: { $cond: [{ $eq: ["$current_role", toRole] }, 1, 0] }
+            }
+          }
+        }
+      ],
+      salary_stats: [
+        { $unwind: "$pivots_detected" },
+        { $match: { "pivots_detected.to_role": toRole } },
+        {
+          $group: {
+            _id: null,
+            median_lift: { $avg: "$pivots_detected.salary_lift_pct" },
+            min_lift: { $min: "$pivots_detected.salary_lift_pct" },
+            max_lift: { $max: "$pivots_detected.salary_lift_pct" },
+            avg_months: { $avg: "$pivots_detected.months_taken" }
+          }
+        }
+      ],
+      examples: [
+        { $match: { "pivots_detected.to_role": toRole } },
+        { $sample: { size: 3 } },
+        {
+          $project: {
+            anon_id: 1,
+            starting_role: { $arrayElemAt: ["$snapshots.role", 0] },
+            current_role: 1,
+            total_years_exp: 1,
+            ed_level: 1,
+            source: 1
+          }
+        }
+      ],
+      sources: [
+        { $group: { _id: "$source" } },
+        { $project: { source: "$_id" } }
+      ]
+    }
+  }
+]);
+```
+
+**Conversion rate (đã sửa so với bản doc cũ):**
+- **Mẫu số** = mọi trajectory trong cohort `from_role`.
+- **Tử số** = `current_role === toRole` (đã hoàn thành pivot).
+- Không dùng `skills_want` (field đó là tên skill, không phải role).
+
+**Confidence (application):** `high` nếu N≥100, `medium` nếu N≥30, else `low` — drive Honest Mode UI.
+
+**Tại sao `$facet` mạnh:** 5 metric + data sources trong **một round-trip** → card Proof Drawer render ngay, P95 thấp.
+
+### 4.8 UC-7 — VN Salary Band (Aggregation `$facet` on `jobs`)
+
+**Câu hỏi:** *"AI Engineer ở VN đang được trả bao nhiêu? Công ty nào hire? Skill nào hot trong JD?"*
+
+**File:** `server/src/services/aggregations/salary-band.ts`
+
+**Match JD:** title regex theo alias role (ITViec keywords) **HOẶC** `required_skills` overlap với top missing skills từ UC-1.
+
+```javascript
+db.jobs.aggregate([
+  {
+    $match: {
+      $or: [
+        { title: { $regex: "AI Engineer|LLM|GenAI", $options: "i" } },
+        { required_skills: { $in: ["LangChain", "Vector Databases", …] } }
+      ]
+    }
+  },
+  {
+    $facet: {
+      by_level: [
+        {
+          $group: {
+            _id: "$level",
+            count: { $sum: 1 },
+            median_min: { $avg: "$salary_min" },
+            median_max: { $avg: "$salary_max" },
+            min_vnd: { $min: "$salary_min" },
+            max_vnd: { $max: "$salary_max" }
+          }
+        },
+        { $sort: { median_max: 1 } }
+      ],
+      top_companies: [
+        { $sort: { salary_max: -1 } },
+        {
+          $group: {
+            _id: "$company",
+            count: { $sum: 1 },
+            top_title: { $first: "$title" },
+            top_level: { $first: "$level" }
+          }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 5 }
+      ],
+      top_skills: [
+        { $unwind: "$required_skills" },
+        { $group: { _id: "$required_skills", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 8 }
+      ],
+      overall: [
+        {
+          $group: {
+            _id: null,
+            n: { $sum: 1 },
+            median_min: { $avg: "$salary_min" },
+            median_max: { $avg: "$salary_max" },
+            min_vnd: { $min: "$salary_min" },
+            max_vnd: { $max: "$salary_max" }
+          }
+        }
+      ]
+    }
+  }
+]);
+```
+
+**UI:** `salary-band-card.tsx` — bar theo seniority, top companies, skill tags, kèm UC-5 lift table.
+
+### 4.9 Tổng hợp: Vector Search vs Aggregation trong một request
+
+```mermaid
+flowchart LR
+  subgraph Phase1["Phase 1 — Promise.all"]
+    G[UC-1 Gap<br/>$lookup + $vectorSearch]
+    P[UC-4 Paths<br/>$match/$sort]
+    PR[UC-6 Proof<br/>$facet]
+    S[UC-3 Similar<br/>$vectorSearch or $setIntersection]
+  end
+  subgraph Phase2["Phase 2 — Promise.all"]
+    C[UC-2 Courses<br/>$vectorSearch ×3]
+    J[UC-7 Salary Band<br/>$facet jobs]
+    L[UC-5 Salary Lift<br/>$unwind + $group]
+  end
+  Phase1 --> Phase2
+```
+
+Cả **Atlas Vector Search** (3 collection có index) và **Aggregation Pipeline** (`$facet`, `$graphLookup`, `$group`, `$lookup`, `$setIntersection`) đều là đường dẫn production — không chỉ demo ETL.
 
 ---
 
@@ -1123,8 +1109,8 @@ async function hybridSkillRecommendation(cvEmbedding, currentRole) {
 | Operation | Target P95 | Strategy |
 |-----------|:-:|----------|
 | Vector Search top-10 | < 800ms | Pre-warm index, numCandidates 100 |
-| `$graphLookup` 4 hops | < 1.2s | Pre-filter `confidence` + `frequency`, index trên `from_skill` |
-| `$facet` Proof Drawer (5 facets) | < 1.5s | Indexes trên match keys |
+| Pivot paths (direct edges + synthesis) | < 800ms | Pre-computed `skill_transitions`; optional `$graphLookup` best-effort |
+| `$facet` Proof Drawer + Salary Band | < 1.5s | Indexes trên match keys; single round-trip mỗi card |
 | Embedding generation (OpenAI) | < 1.2s | `text-embedding-3-small` p50 ~400ms |
 | Full /api/analyze E2E | < 4s | 2 phases × `Promise.all` (gap/paths/proof/similar // courses/salary/lift) |
 
@@ -1438,7 +1424,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
 
 ```bash
 # 1. Clone monorepo
-git clone https://github.com/htra/pathfinder.git
+git clone https://github.com/trahoangdev/path-finder.git
 cd pathfinder
 
 # 2. Setup server
@@ -1470,7 +1456,7 @@ npm run dev                                        # → http://localhost:4000
 # 5. Setup + run client (Terminal 2)
 cd ../client
 cp .env.local.example .env.local
-npm install
+pmpn install
 npm run dev                                        # → http://localhost:3000
 ```
 

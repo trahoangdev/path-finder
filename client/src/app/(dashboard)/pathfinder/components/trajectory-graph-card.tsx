@@ -36,6 +36,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "@/contexts/locale-context";
 import type { PivotPath, SimilarDevsGroup } from "@/lib/pathfinder/types";
 
 interface TrajectoryGraphCardProps {
@@ -47,7 +48,6 @@ interface TrajectoryGraphCardProps {
 type FlavorKey = "fast" | "balanced" | "comprehensive";
 
 interface FlavorMeta {
-  label: string;
   icon: LucideIcon;
   /** Solid accent color used for edges, target node fill, and lane label text. */
   color: string;
@@ -63,7 +63,6 @@ interface FlavorMeta {
 
 const FLAVOR_CONFIG: Record<FlavorKey, FlavorMeta> = {
   fast: {
-    label: "Fast",
     icon: Rabbit,
     color: "#f97316",
     laneWash: "rgba(249, 115, 22, 0.06)",
@@ -72,7 +71,6 @@ const FLAVOR_CONFIG: Record<FlavorKey, FlavorMeta> = {
     border: "rgba(249, 115, 22, 0.70)",
   },
   balanced: {
-    label: "Balanced",
     icon: Scale,
     color: "#10b981",
     laneWash: "rgba(16, 185, 129, 0.06)",
@@ -81,7 +79,6 @@ const FLAVOR_CONFIG: Record<FlavorKey, FlavorMeta> = {
     border: "rgba(16, 185, 129, 0.70)",
   },
   comprehensive: {
-    label: "Comprehensive",
     icon: Telescope,
     color: "#a78bfa",
     laneWash: "rgba(167, 139, 250, 0.06)",
@@ -254,7 +251,8 @@ function buildGraph(orderedPaths: PivotPath[]): GraphBuild {
 // ─── Custom node + edge components ──────────────────────────────────────────
 
 function LaneNode({ data }: NodeProps<LaneNodeType>) {
-  const { meta, path, laneWidth } = data;
+  const t = useTranslations();
+  const { meta, path, laneWidth, flavor } = data;
   const Icon = meta.icon;
   return (
     <div
@@ -276,7 +274,7 @@ function LaneNode({ data }: NodeProps<LaneNodeType>) {
       >
         <span className="flex items-center gap-1.5 text-[13px]">
           <Icon className="size-4" />
-          <span>{meta.label}</span>
+          <span>{t(`pivotFlavor.${flavor}`)}</span>
         </span>
         <div className="flex items-center gap-2 font-mono text-[11px] font-medium opacity-95">
           <span>{Math.round(path.total_months)}mo</span>
@@ -393,6 +391,7 @@ export function TrajectoryGraphCard({
   similar,
   targetRole,
 }: TrajectoryGraphCardProps) {
+  const t = useTranslations();
   const orderedPaths = React.useMemo(
     () =>
       FLAVOR_ORDER.map((flavor) => paths.find((p) => p.flavor === flavor)).filter(
@@ -415,16 +414,15 @@ export function TrajectoryGraphCard({
     return (
       <Card>
         <CardHeader>
-          <CardDescription>Trajectory graph</CardDescription>
+          <CardDescription>{t("pathfinder.trajectory.description")}</CardDescription>
           <CardTitle className="flex items-center gap-2 text-base">
             <GitBranch className="size-4 text-primary" />
-            Visualize pivot routes
+            {t("pathfinder.trajectory.titleEmpty")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No reachable paths in the skill-transitions graph yet — try a more
-            populated source skill or seed more trajectories via the ETL.
+            {t("pathfinder.trajectory.empty")}
           </p>
         </CardContent>
       </Card>
@@ -434,16 +432,13 @@ export function TrajectoryGraphCard({
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Trajectory graph</CardDescription>
+        <CardDescription>{t("pathfinder.trajectory.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <GitBranch className="size-4 text-primary" />
-          Three routes laid out side-by-side
+          {t("pathfinder.trajectory.title")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Each lane is a separate{" "}
-          <code className="rounded bg-muted px-1 text-xs">$graphLookup</code>{" "}
-          discovery. Pan & zoom, fit-to-view from the bottom-left controls.
-          Edge labels show average months + salary lift from cohort data.
+          {t("pathfinder.trajectory.subtitle")}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -527,6 +522,7 @@ export function TrajectoryGraphCard({
 }
 
 function Legend() {
+  const t = useTranslations();
   return (
     <div className="flex flex-wrap items-center gap-3 text-xs">
       {FLAVOR_ORDER.map((flavor) => {
@@ -544,7 +540,7 @@ function Legend() {
             }}
           >
             <Icon className="size-3" />
-            {meta.label}
+            {t(`pivotFlavor.${flavor}`)}
           </Badge>
         );
       })}

@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "@/contexts/locale-context";
 import type { AnalyzeRequest } from "@/lib/pathfinder/types";
 import { DEMO_PERSONAS, type DemoPersona } from "../sample-cv";
 
@@ -49,6 +50,7 @@ interface AnalyzeFormProps {
 }
 
 export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
+  const t = useTranslations();
   const [cvText, setCvText] = React.useState("");
   const [targetRole, setTargetRole] = React.useState("AI Engineer");
   const [validationError, setValidationError] = React.useState<string | null>(
@@ -75,12 +77,12 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
     event.preventDefault();
     if (!charValid) {
       setValidationError(
-        `CV must be 50–8000 characters. Currently ${charCount}.`,
+        t("pathfinder.form.cvLengthError", { count: charCount }),
       );
       return;
     }
     if (!targetRole.trim()) {
-      setValidationError("Target role is required.");
+      setValidationError(t("pathfinder.form.targetRoleRequired"));
       return;
     }
     setValidationError(null);
@@ -93,12 +95,9 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base">
-              Plan a developer&apos;s next move
+              {t("pathfinder.form.title")}
             </CardTitle>
-            <CardDescription>
-              Paste a CV, set a target role. We&apos;ll run gap analysis, pivot
-              paths, proof drawer and similar-dev clustering on MongoDB Atlas.
-            </CardDescription>
+            <CardDescription>{t("pathfinder.form.description")}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {DEMO_PERSONAS.map((persona) => (
@@ -126,7 +125,7 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
               disabled={loading}
             >
               <RotateCcw className="size-4" />
-              Reset
+              {t("common.reset")}
             </Button>
           </div>
         </div>
@@ -135,20 +134,22 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
         <form onSubmit={handleRun} className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="cv">Candidate CV (plain text)</Label>
+              <Label htmlFor="cv">{t("pathfinder.form.cvLabel")}</Label>
               <span
                 className={`text-xs tabular-nums ${
                   charValid ? "text-muted-foreground" : "text-destructive"
                 }`}
               >
-                {charCount.toLocaleString()} / 8,000 chars
+                {t("pathfinder.form.charCount", {
+                  count: charCount.toLocaleString(),
+                })}
               </span>
             </div>
             <Textarea
               id="cv"
               value={cvText}
               onChange={(e) => setCvText(e.target.value)}
-              placeholder="Paste a full CV here — summary, experience, skills…"
+              placeholder={t("pathfinder.form.cvPlaceholder")}
               className="min-h-[320px] resize-y font-mono text-xs leading-relaxed"
               disabled={loading}
             />
@@ -156,13 +157,13 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
 
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="target-role">Target role</Label>
+              <Label htmlFor="target-role">{t("pathfinder.form.targetRole")}</Label>
               <Input
                 id="target-role"
                 value={targetRole}
                 onChange={(e) => setTargetRole(e.target.value)}
                 disabled={loading}
-                placeholder="e.g. AI Engineer"
+                placeholder={t("pathfinder.form.targetRolePlaceholder")}
               />
               <Select
                 value={
@@ -172,7 +173,7 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
                 disabled={loading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Pick a preset…" />
+                  <SelectValue placeholder={t("pathfinder.form.pickPreset")} />
                 </SelectTrigger>
                 <SelectContent>
                   {TARGET_ROLE_PRESETS.map((role) => (
@@ -185,37 +186,39 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
             </div>
 
             <div className="rounded-lg border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">What runs server-side</p>
+              <p className="font-medium text-foreground">
+                {t("pathfinder.form.pipelineTitle")}
+              </p>
               <ul className="mt-2 space-y-1 list-disc pl-4">
                 <li>
                   <Badge variant="secondary" className="font-mono">
                     gpt-4o-mini
                   </Badge>{" "}
-                  extract skills, role, years from CV
+                  {t("pathfinder.form.pipelineExtract")}
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">
                     text-embed-3-small
                   </Badge>{" "}
-                  768-dim vector of CV + target role
+                  {t("pathfinder.form.pipelineEmbed")}
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">
                     Atlas Vector Search
                   </Badge>{" "}
-                  gap, similar devs, course matching
+                  {t("pathfinder.form.pipelineAtlas")}
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">
                     $graphLookup
                   </Badge>{" "}
-                  recursive pivot paths
+                  {t("pathfinder.form.pipelineGraph")}
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">
                     $facet
                   </Badge>{" "}
-                  proof drawer in one round-trip
+                  {t("pathfinder.form.pipelineFacet")}
                 </li>
               </ul>
             </div>
@@ -224,12 +227,12 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
               {loading ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Running pipeline…
+                  {t("pathfinder.form.running")}
                 </>
               ) : (
                 <>
                   <Play className="size-4" />
-                  Run analysis
+                  {t("pathfinder.form.runAnalysis")}
                 </>
               )}
             </Button>

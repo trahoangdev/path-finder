@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+import { Providers } from "@/components/providers";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SidebarConfigProvider } from "@/contexts/sidebar-context";
 import { inter } from "@/lib/fonts";
 
 export const metadata: Metadata = {
-  title: "PathFinder · Career Pivot Engine",
+  title: "PathFinder · Công cụ chuyển hướng sự nghiệp",
   description:
-    "PathFinder helps Vietnamese developers plan their next career move with MongoDB Atlas Vector Search and Google Gemini.",
+    "PathFinder giúp lập trình viên Việt Nam lên kế hoạch bước chuyển nghề tiếp theo với MongoDB Atlas Vector Search và Google Gemini.",
 };
 
 export default function RootLayout({
@@ -17,13 +18,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} antialiased`}>
+    <html lang="vi" className={`${inter.variable} antialiased`}>
       <body className={inter.className}>
-        <ThemeProvider defaultTheme="system" storageKey="nextjs-ui-theme">
-          <SidebarConfigProvider>
-            {children}
-          </SidebarConfigProvider>
-        </ThemeProvider>
+        <Providers>
+          <ThemeProvider defaultTheme="system" storageKey="nextjs-ui-theme">
+            <SidebarConfigProvider>{children}</SidebarConfigProvider>
+          </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );
