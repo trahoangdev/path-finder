@@ -10,10 +10,13 @@ import { pivotPaths } from '../services/aggregations/pivot-path.js';
 import { proofDrawer } from '../services/aggregations/proof-drawer.js';
 import { similarDevs } from '../services/vector-search/similar-devs.js';
 import { recommendCourses } from '../services/vector-search/courses.js';
+import { salaryBand, type SalaryBandResult } from '../services/aggregations/salary-band.js';
+import { salaryInference } from '../services/aggregations/salary-inference.js';
 import { BadRequestError } from '../lib/errors.js';
 import type { CoursePublic } from '../schemas/course.js';
 import type { UserSkill } from '../schemas/user.js';
 import { normalizeRole, normalizeTargetRole } from '../lib/role-normalizer.js';
+import type { SalaryInferenceResult } from '../services/aggregations/types.js';
 
 function levelRank(level: UserSkill['level']): number {
   return level === 'advanced' ? 3 : level === 'intermediate' ? 2 : 1;
@@ -43,6 +46,12 @@ const TARGET_HINTS: Record<string, string> = {
     'Builds cross-platform mobile apps. Core stack: React Native, TypeScript, Redux, native modules, iOS/Android, App Store / Play Store deployment.',
   'full-stack engineer':
     'Builds end-to-end web applications. Core stack: TypeScript, React, Next.js, Node.js, Express, PostgreSQL, MongoDB, REST, GraphQL, Docker, AWS.',
+  'embedded engineer':
+    'Develops firmware and low-level systems for IoT and connected devices. Core stack: C, C++, Rust embedded, RTOS (FreeRTOS, Zephyr), ARM Cortex, STM32, ESP32, I2C/SPI/UART, hardware debugging, MQTT, low-power design.',
+  'qa automation engineer':
+    'Designs and runs automated test suites for web and mobile apps. Core stack: Playwright, Cypress, Selenium, Appium, TypeScript / Python, REST API testing (Postman, RestAssured), CI/CD pipelines, performance testing (k6, JMeter), test strategy.',
+  'security engineer':
+    'Hardens applications and infrastructure against attackers. Core stack: OWASP Top 10, threat modeling, penetration testing (Burp Suite, Metasploit), SAST/DAST tooling, container security, IAM, secrets management (Vault), incident response, SIEM (Splunk, ELK), AWS / GCP security primitives.',
 };
 
 function buildTargetPrompt(targetRole: string): string {
@@ -155,37 +164,27 @@ export const orchestratorApp = new OpenAPIHono().openapi(route, async (c) => {
       t: performance.now(),
     })),
   ]);
-  const tParallelEnd = performance.now();
 
-  // ─── Phase 2: course recommendations for top missing skills ────────────────
+  // ─── Phase 2: course recommendations + salary band ─────────────────────────
   //
-  // We don't pre-store per-skill embeddings, so we embed the top-3 missing
-  // skill descriptions in a single batch call and then run a Vector Search
-  // per skill in parallel against the `courses` collection.
+  // Both depend on the gap-analysis output (top missing skills). Run them
+  // alongside salary inference + jobs salary band in parallel — they hit
+  // different collections so contention is minimal.
   const topMissing = gap.result.slice(0, 3);
-  let coursesBySkill: Array<{ skill: string; courses: CoursePublic[] }> = [];
-  if (topMissing.length > 0) {
-    try {
-      const skillEmbeddings = await embedBatch(
-        topMissing.map((s) => `${s.name}. ${s.description}`),
-      );
-      const courseResults = await Promise.all(
-        topMissing.map((skill, idx) =>
-          recommendCourses({
-            skill_name: skill.name,
-            skill_embedding: skillEmbeddings[idx]!,
-            limit: 3,
-          }).catch(() => [] as CoursePublic[]),
-        ),
-      );
-      coursesBySkill = topMissing.map((skill, idx) => ({
-        skill: skill.name,
-        courses: courseResults[idx] ?? [],
-      }));
-    } catch {
-      coursesBySkill = topMissing.map((skill) => ({ skill: skill.name, courses: [] }));
-    }
-  }
+  const missingSkillNames = topMissing.map((s) => s.name);
+  const tCoursesStart = performance.now();
+
+  const [coursesBySkill, salaryBandResult, pivotSalaryLift] = await Promise.all([
+    buildCourseRecommendations(topMissing),
+    salaryBand({
+      target_role,
+      target_skills: missingSkillNames,
+    }).catch(() => emptySalaryBand(target_role)),
+    salaryInference({ skills_learned: missingSkillNames }).catch(
+      () => [] as SalaryInferenceResult[],
+    ),
+  ]);
+
   const tFinal = performance.now();
 
   return c.json(
@@ -196,6 +195,8 @@ export const orchestratorApp = new OpenAPIHono().openapi(route, async (c) => {
       proof_drawer: proof.result,
       similar_devs: { groups: similar.result },
       courses_by_skill: coursesBySkill,
+      salary_band: salaryBandResult,
+      pivot_salary_lift: pivotSalaryLift,
       timings_ms: {
         extract: Math.round(t1 - t0),
         embed: Math.round(t2 - t1),
@@ -203,10 +204,51 @@ export const orchestratorApp = new OpenAPIHono().openapi(route, async (c) => {
         paths: Math.round(paths.t - t2),
         proof: Math.round(proof.t - t2),
         similar: Math.round(similar.t - t2),
-        courses: Math.round(tFinal - tParallelEnd),
+        courses: Math.round(tFinal - tCoursesStart),
+        salary: Math.round(tFinal - tCoursesStart),
         total: Math.round(tFinal - t0),
       },
     },
     200,
   );
 });
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+async function buildCourseRecommendations(
+  topMissing: Array<{ name: string; description: string }>,
+): Promise<Array<{ skill: string; courses: CoursePublic[] }>> {
+  if (topMissing.length === 0) return [];
+  try {
+    const skillEmbeddings = await embedBatch(
+      topMissing.map((s) => `${s.name}. ${s.description}`),
+    );
+    const courseResults = await Promise.all(
+      topMissing.map((skill, idx) =>
+        recommendCourses({
+          skill_name: skill.name,
+          skill_embedding: skillEmbeddings[idx]!,
+          limit: 3,
+        }).catch(() => [] as CoursePublic[]),
+      ),
+    );
+    return topMissing.map((skill, idx) => ({
+      skill: skill.name,
+      courses: courseResults[idx] ?? [],
+    }));
+  } catch {
+    return topMissing.map((skill) => ({ skill: skill.name, courses: [] }));
+  }
+}
+
+function emptySalaryBand(targetRole: string): SalaryBandResult {
+  return {
+    target_role: targetRole,
+    total_matches: 0,
+    overall: null,
+    by_level: [],
+    top_companies: [],
+    top_required_skills: [],
+    source: 'itviec_sample',
+  };
+}

@@ -219,6 +219,63 @@ export const CoursesBySkillSchema = z
   )
   .openapi('CoursesBySkill');
 
+// ─── /analyze: salary band + post-pivot lift (UC-5 + market context) ──────
+
+export const SalaryBandLevelSchema = z
+  .object({
+    level: z.string(),
+    count: z.number().int(),
+    median_min_vnd: z.number(),
+    median_max_vnd: z.number(),
+    min_vnd: z.number(),
+    max_vnd: z.number(),
+  })
+  .openapi('SalaryBandLevel');
+
+export const SalaryBandCompanySchema = z
+  .object({
+    company: z.string(),
+    count: z.number().int(),
+    top_title: z.string(),
+    top_level: z.string().optional(),
+  })
+  .openapi('SalaryBandCompany');
+
+export const SalaryBandSkillSchema = z
+  .object({
+    skill: z.string(),
+    count: z.number().int(),
+  })
+  .openapi('SalaryBandSkill');
+
+export const SalaryBandReportSchema = z
+  .object({
+    target_role: z.string(),
+    total_matches: z.number().int(),
+    overall: z
+      .object({
+        median_min_vnd: z.number(),
+        median_max_vnd: z.number(),
+        min_vnd: z.number(),
+        max_vnd: z.number(),
+      })
+      .nullable(),
+    by_level: z.array(SalaryBandLevelSchema),
+    top_companies: z.array(SalaryBandCompanySchema),
+    top_required_skills: z.array(SalaryBandSkillSchema),
+    source: z.string(),
+  })
+  .openapi('SalaryBandReport');
+
+export const PivotSalaryLiftSchema = z
+  .object({
+    to_role: z.string(),
+    sample_size: z.number().int(),
+    avg_months: z.number(),
+    median_lift_pct: z.number(),
+  })
+  .openapi('PivotSalaryLift');
+
 export const AnalyzeResponseSchema = z
   .object({
     profile: z.object({
@@ -231,6 +288,8 @@ export const AnalyzeResponseSchema = z
     proof_drawer: ProofDrawerResponseSchema,
     similar_devs: SimilarDevsResponseSchema,
     courses_by_skill: CoursesBySkillSchema,
+    salary_band: SalaryBandReportSchema,
+    pivot_salary_lift: z.array(PivotSalaryLiftSchema),
     timings_ms: z.object({
       extract: z.number(),
       embed: z.number(),
@@ -239,6 +298,7 @@ export const AnalyzeResponseSchema = z
       proof: z.number(),
       similar: z.number(),
       courses: z.number(),
+      salary: z.number(),
       total: z.number(),
     }),
   })
