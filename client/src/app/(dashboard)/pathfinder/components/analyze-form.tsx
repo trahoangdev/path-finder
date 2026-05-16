@@ -175,13 +175,13 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
               <ul className="mt-2 space-y-1 list-disc pl-4">
                 <li>
                   <Badge variant="secondary" className="font-mono">
-                    Gemini
+                    gpt-4o-mini
                   </Badge>{" "}
                   extract skills, role, years from CV
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">
-                    embed-001
+                    text-embed-3-small
                   </Badge>{" "}
                   768-dim vector of CV + target role
                 </li>
@@ -189,7 +189,7 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
                   <Badge variant="secondary" className="font-mono">
                     Atlas Vector Search
                   </Badge>{" "}
-                  gap & similar devs
+                  gap, similar devs, course matching
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">

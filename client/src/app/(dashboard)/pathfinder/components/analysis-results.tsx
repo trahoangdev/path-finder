@@ -13,8 +13,10 @@ import type { AnalyzeRequest, AnalyzeResponse } from "@/lib/pathfinder/types";
 import { ProfileCard } from "./profile-card";
 import { GapAnalysisCard } from "./gap-analysis-card";
 import { PivotPathsCard } from "./pivot-paths-card";
+import { TrajectoryGraphCard } from "./trajectory-graph-card";
 import { ProofDrawerCard } from "./proof-drawer-card";
 import { SimilarDevsCard } from "./similar-devs-card";
+import { CoursesCard } from "./courses-card";
 import { TimingsCard } from "./timings-card";
 
 type ViewState =
@@ -38,10 +40,16 @@ export function AnalysisResults({ state }: AnalysisResultsProps) {
       <ProfileCard profile={data.profile} targetRole={payload.target_role} />
       <GapAnalysisCard skills={data.gap_analysis.missing_skills} />
       <PivotPathsCard paths={data.pivot_paths.paths} />
+      <TrajectoryGraphCard
+        paths={data.pivot_paths.paths}
+        similar={data.similar_devs.groups}
+        targetRole={payload.target_role}
+      />
       <div className="grid gap-4 lg:grid-cols-2">
         <ProofDrawerCard data={data.proof_drawer} />
         <SimilarDevsCard groups={data.similar_devs.groups} />
       </div>
+      <CoursesCard groups={data.courses_by_skill ?? []} />
       <TimingsCard timings={data.timings_ms} />
     </div>
   );
@@ -72,7 +80,7 @@ function EmptyState() {
           <Step
             n={3}
             title="One orchestrated call"
-            body="Gemini extracts skills, MongoDB Atlas runs Vector Search + $graphLookup + $facet in parallel."
+            body="OpenAI extracts skills, MongoDB Atlas runs Vector Search + $graphLookup + $facet in parallel."
           />
           <Step
             n={4}
@@ -106,7 +114,7 @@ function LoadingState() {
             Embedding CV + querying MongoDB Atlas…
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            First call may take 5–15s while Gemini embeds the CV. Subsequent
+            First call may take 5–15s while OpenAI embeds the CV. Subsequent
             calls reuse Mongo&apos;s warmed Atlas Vector Search cache.
           </p>
         </CardHeader>
@@ -173,8 +181,8 @@ function ErrorState({ message }: { message: string }) {
         <p className="text-xs text-muted-foreground">
           Common causes: server not running on{" "}
           <code className="rounded bg-muted px-1">localhost:4000</code>, Atlas
-          connection down, or Gemini free-tier quota exhausted. Inspect the
-          server console for details.
+          connection down, or OpenAI quota exhausted. Inspect the server
+          console for details.
         </p>
       </CardHeader>
     </Card>

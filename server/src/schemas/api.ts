@@ -210,6 +210,15 @@ export const AnalyzeRequestSchema = z
   })
   .openapi('AnalyzeRequest');
 
+export const CoursesBySkillSchema = z
+  .array(
+    z.object({
+      skill: z.string(),
+      courses: z.array(CoursePublicSchema),
+    }),
+  )
+  .openapi('CoursesBySkill');
+
 export const AnalyzeResponseSchema = z
   .object({
     profile: z.object({
@@ -221,6 +230,7 @@ export const AnalyzeResponseSchema = z
     pivot_paths: PivotPathResponseSchema,
     proof_drawer: ProofDrawerResponseSchema,
     similar_devs: SimilarDevsResponseSchema,
+    courses_by_skill: CoursesBySkillSchema,
     timings_ms: z.object({
       extract: z.number(),
       embed: z.number(),
@@ -228,6 +238,7 @@ export const AnalyzeResponseSchema = z
       paths: z.number(),
       proof: z.number(),
       similar: z.number(),
+      courses: z.number(),
       total: z.number(),
     }),
   })

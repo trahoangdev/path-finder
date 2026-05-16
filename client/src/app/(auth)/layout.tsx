@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Authentication - ShadcnStore",
-  description: "Sign in to your account or create a new one",
+  title: "Authentication - PathFinder",
+  description: "Sign in to your PathFinder account or create a new one",
 };
 
 export default function AuthLayout({

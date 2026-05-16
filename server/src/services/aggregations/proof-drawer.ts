@@ -60,13 +60,16 @@ export async function proofDrawer({
           { $match: { 'pivots_detected.to_role': to_role } },
           { $count: 'n' },
         ],
+        // Conversion rate = (devs who ENDED at to_role) / (devs who passed
+        // through from_role at any point). `snapshots.skills_want` is a list
+        // of skill names — it cannot signal role-level intent, so we use
+        // current_role match for the numerator and the matched cohort size
+        // (already filtered by snapshots.role) as the denominator.
         conversion: [
           {
             $group: {
               _id: null,
-              total_with_intent: {
-                $sum: { $cond: [{ $in: [to_role, '$snapshots.skills_want'] }, 1, 0] },
-              },
+              total_with_intent: { $sum: 1 },
               total_completed: {
                 $sum: { $cond: [{ $eq: ['$current_role', to_role] }, 1, 0] },
               },

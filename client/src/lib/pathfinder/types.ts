@@ -140,12 +140,18 @@ export interface AnalyzeRequest {
   target_role: string;
 }
 
+export interface CoursesForSkill {
+  skill: string;
+  courses: CoursePublic[];
+}
+
 export interface AnalyzeResponse {
   profile: ExtractedProfile;
   gap_analysis: { missing_skills: MissingSkill[] };
   pivot_paths: { paths: PivotPath[] };
   proof_drawer: ProofDrawerResponse;
   similar_devs: { groups: SimilarDevsGroup[] };
+  courses_by_skill: CoursesForSkill[];
   timings_ms: {
     extract: number;
     embed: number;
@@ -153,6 +159,7 @@ export interface AnalyzeResponse {
     paths: number;
     proof: number;
     similar: number;
+    courses: number;
     total: number;
   };
 }

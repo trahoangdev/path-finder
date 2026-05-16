@@ -1,14 +1,17 @@
 "use client"
 
 import * as React from "react"
+import { Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { CommandSearch, SearchTrigger } from "@/components/command-search"
 import { ModeToggle } from "@/components/mode-toggle"
+import { ThemeCustomizer } from "@/components/theme-customizer"
 
 export function SiteHeader() {
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [themeCustomizerOpen, setThemeCustomizerOpen] = React.useState(false)
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -35,41 +38,25 @@ export function SiteHeader() {
             <SearchTrigger onClick={() => setSearchOpen(true)} />
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
-              <a
-                href="https://shadcnstore.com/blocks"
-                rel="noopener noreferrer"
-                target="_blank"
-                className="dark:text-foreground"
-              >
-                Blocks
-              </a>
-            </Button>
-            <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
-              <a
-                href="/landing"
-                rel="noopener noreferrer"
-                target="_blank"
-                className="dark:text-foreground"
-              >
-                Landing Page
-              </a>
-            </Button>
-            <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
-              <a
-                href="https://github.com/silicondeck/shadcn-dashboard-landing-template"
-                rel="noopener noreferrer"
-                target="_blank"
-                className="dark:text-foreground"
-              >
-                GitHub
-              </a>
-            </Button>
             <ModeToggle />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setThemeCustomizerOpen(true)}
+              className="cursor-pointer"
+              aria-label="Open theme customizer"
+            >
+              <Settings className="h-[1.2rem] w-[1.2rem]" />
+              <span className="sr-only">Customize theme</span>
+            </Button>
           </div>
         </div>
       </header>
       <CommandSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      <ThemeCustomizer
+        open={themeCustomizerOpen}
+        onOpenChange={setThemeCustomizerOpen}
+      />
     </>
   )
 }
