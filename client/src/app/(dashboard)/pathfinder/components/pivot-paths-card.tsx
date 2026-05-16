@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { PivotPath } from "@/lib/pathfinder/types";
+import { DataSourceBadges } from "./honest-mode";
 
 interface PivotPathsCardProps {
   paths: PivotPath[];
@@ -64,6 +65,10 @@ export function PivotPathsCard({ paths }: PivotPathsCardProps) {
           <code className="rounded bg-muted px-1 text-xs">$graphLookup</code>{" "}
           over the pre-computed <em>skill_transitions</em> graph.
         </p>
+        <DataSourceBadges
+          className="pt-1"
+          sources={["skill_transitions", "synthetic_vn_cohort"]}
+        />
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={defaultTab} className="gap-4">

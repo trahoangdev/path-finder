@@ -11,19 +11,21 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { ProofDrawerResponse } from "@/lib/pathfinder/types";
+import {
+  DataSourceBadges,
+  HONEST_THRESHOLDS,
+  HonestModeBadge,
+  InsufficientDataPlaceholder,
+} from "./honest-mode";
 
 interface ProofDrawerCardProps {
   data: ProofDrawerResponse;
 }
 
-const CONFIDENCE_STYLES = {
-  high: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  medium: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  low: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-};
-
 export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
   const examples = data.example_profiles.slice(0, 4);
+  // Honest Mode (F7.3): when N < 10, refuse to render speculative stats.
+  const hide = data.sample_size < HONEST_THRESHOLDS.hide;
 
   return (
     <Card>
@@ -41,82 +43,89 @@ export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Sample size" value={data.sample_size.toLocaleString()} hint="similar pivots in data" />
-          <Stat
-            label="Conversion rate"
-            value={`${(data.conversion_rate * 100).toFixed(1)}%`}
-            accent
-            hint="completed the pivot"
+        {hide ? (
+          <InsufficientDataPlaceholder
+            n={data.sample_size}
+            description="The trajectory cohort that matches your start → target combo is too small to produce a trustworthy conversion rate or salary lift. Re-run with a closer target or seed more rows via the ETL."
           />
-          <Stat
-            label="Median salary lift"
-            value={`+${Math.round(data.salary_stats.median_lift_pct)}%`}
-            accent
-            hint={`spread ${Math.round(data.salary_stats.min_lift_pct)}…+${Math.round(data.salary_stats.max_lift_pct)}%`}
-          />
-          <Stat
-            label="Avg duration"
-            value={`${Math.round(data.salary_stats.avg_months)} mo`}
-            hint="time-to-target role"
-          />
-        </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat
+              label="Sample size"
+              value={data.sample_size.toLocaleString()}
+              hint="similar pivots in data"
+            />
+            <Stat
+              label="Conversion rate"
+              value={`${(data.conversion_rate * 100).toFixed(1)}%`}
+              accent
+              hint="completed the pivot"
+            />
+            <Stat
+              label="Median salary lift"
+              value={`+${Math.round(data.salary_stats.median_lift_pct)}%`}
+              accent
+              hint={`spread ${Math.round(data.salary_stats.min_lift_pct)}…+${Math.round(data.salary_stats.max_lift_pct)}%`}
+            />
+            <Stat
+              label="Avg duration"
+              value={`${Math.round(data.salary_stats.avg_months)} mo`}
+              hint="time-to-target role"
+            />
+          </div>
+        )}
 
         <Separator />
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline" className={CONFIDENCE_STYLES[data.confidence]}>
-            confidence: {data.confidence}
-          </Badge>
-          {data.data_sources.map((source) => (
-            <Badge key={source} variant="secondary" className="font-mono">
-              {source}
-            </Badge>
-          ))}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <HonestModeBadge n={data.sample_size} unit="pivoters" />
+          <DataSourceBadges sources={data.data_sources} />
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-            <Users className="size-4 text-muted-foreground" />
-            Sample pivoters in the data
-          </div>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {examples.length === 0 ? (
-              <li className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                No example trajectories surfaced.
-              </li>
-            ) : (
-              examples.map((ex) => (
-                <li
-                  key={ex.anon_id}
-                  className="rounded-lg border bg-muted/30 p-3 text-sm"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {ex.anon_id}
-                    </span>
-                    <Badge variant="outline" className="text-[10px]">
-                      {ex.source}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 font-medium">
-                    {ex.starting_role ?? "Unknown"}{" "}
-                    <span className="text-muted-foreground">→</span>{" "}
-                    <span className="text-primary">{ex.current_role}</span>
-                  </p>
-                  <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
-                      <GraduationCap className="size-3" />
-                      {ex.ed_level ?? "—"}
-                    </span>
-                    <span>·</span>
-                    <span>{ex.total_years_exp} yrs total</span>
-                  </p>
+        {!hide ? (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <Users className="size-4 text-muted-foreground" />
+              Sample pivoters in the data
+            </div>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {examples.length === 0 ? (
+                <li className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                  No example trajectories surfaced.
                 </li>
-              ))
-            )}
-          </ul>
-        </div>
+              ) : (
+                examples.map((ex) => (
+                  <li
+                    key={ex.anon_id}
+                    className="rounded-lg border bg-muted/30 p-3 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {ex.anon_id}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {ex.source}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 font-medium">
+                      {ex.starting_role ?? "Unknown"}{" "}
+                      <span className="text-muted-foreground">→</span>{" "}
+                      <span className="text-primary">{ex.current_role}</span>
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <GraduationCap className="size-3" />
+                        {ex.ed_level ?? "—"}
+                      </span>
+                      <span>·</span>
+                      <span>{ex.total_years_exp} yrs total</span>
+                    </p>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

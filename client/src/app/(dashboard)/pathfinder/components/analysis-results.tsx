@@ -17,6 +17,7 @@ import { TrajectoryGraphCard } from "./trajectory-graph-card";
 import { ProofDrawerCard } from "./proof-drawer-card";
 import { SimilarDevsCard } from "./similar-devs-card";
 import { CoursesCard } from "./courses-card";
+import { SalaryBandCard } from "./salary-band-card";
 import { TimingsCard } from "./timings-card";
 
 type ViewState =
@@ -49,6 +50,10 @@ export function AnalysisResults({ state }: AnalysisResultsProps) {
         <ProofDrawerCard data={data.proof_drawer} />
         <SimilarDevsCard groups={data.similar_devs.groups} />
       </div>
+      <SalaryBandCard
+        data={data.salary_band}
+        pivotLift={data.pivot_salary_lift ?? []}
+      />
       <CoursesCard groups={data.courses_by_skill ?? []} />
       <TimingsCard timings={data.timings_ms} />
     </div>

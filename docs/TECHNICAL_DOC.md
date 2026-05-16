@@ -4,18 +4,14 @@
 
 | | |
 |---|---|
-| **Đội thi** | Hoàng Trọng Trà (solo) |
+| **Đội thi** | 100M Builder |
+| **Thành viên** | Hoàng Trọng Trà |
 | **Cuộc thi** | MUGVN × MongoDB Mini Hackathon 2026 |
-| **Phiên bản tài liệu** | 1.0 |
+| **Phiên bản tài liệu** | 1.1 (post-implementation) |
 | **Ngày nộp** | 31/05/2026 |
-| **Repository** | https://github.com/htra/pathfinder *(public sau 31/05)* |
+| **Repository** | https://github.com/trahoangdev/path-finder *(public sau 31/05)* |
 | **Live demo** | https://pathfinder-vn.vercel.app *(điền khi deploy)* |
 | **Video demo (≤10 min)** | https://youtu.be/xxxxxxxxx *(điền khi nộp)* |
-
-> Tài liệu này đáp ứng đầy đủ 3 yêu cầu nộp bài (theo email xác nhận):
-> 1. **MVP và kiến trúc hệ thống tổng thể** → Phần 2
-> 2. **Data schema và kiến trúc dữ liệu MongoDB** → Phần 3
-> 3. **Mô tả cách áp dụng Vector Search và Aggregation Pipeline** → Phần 4
 
 ---
 
@@ -72,7 +68,7 @@ Một **AI Career Coach** dành riêng cho dev VN muốn pivot stack. Mọi gợ
 | F2 | Target Role Selection | 12 preset roles + custom |
 | F3 | **Gap Analysis** | Vector Search: thiếu skill nào để vào target |
 | F4 | **Pivot Path Recommendation** | 3 paths Fast/Balanced/Comprehensive (via `$graphLookup`) |
-| F5 | **Trajectory Graph** | react-flow visualization |
+| F5 | **Trajectory Graph** | `@xyflow/react` visualization (3 flavor swimlanes, pan/zoom/minimap) |
 | F6 | **Proof Drawer** | Evidence card cho từng recommendation |
 | F7 | VN Salary Band | Hiển thị salary range theo ITViec data |
 | F8 | Course Recommendation | Vector match course → missing skill |
@@ -87,12 +83,12 @@ flowchart TB
     end
 
     subgraph "Client — Next.js 14 (Port 3000)"
-        FE[App Router · shadcn/ui<br/>react-flow · recharts<br/>UI only]
+        FE[App Router · shadcn/ui<br/>@xyflow/react · recharts<br/>UI only]
     end
 
     subgraph "Server — Hono REST API (Port 4000)"
-        RT[Routes<br/>/analyze · /pivot-paths · /proof-drawer<br/>...]
-        SVC[Services<br/>aggregations · vector-search · gemini]
+        RT[Routes<br/>/analyze · /pivot-paths · /proof-drawer<br/>/salary-band · /similar-devs · ...]
+        SVC[Services<br/>aggregations · vector-search · openai]
         MW[Middleware<br/>CORS · error · logger · ratelimit]
         DOC[/docs Swagger UI<br/>OpenAPI 3.1/]
         RT --- SVC
@@ -101,13 +97,13 @@ flowchart TB
     end
 
     subgraph "AI Services"
-        G_EMB[Gemini embedding-001<br/>768-dim]
-        G_LLM[Gemini 1.5 Flash<br/>Skill Extraction]
+        G_EMB[OpenAI text-embedding-3-small<br/>768-dim (Matryoshka)]
+        G_LLM[OpenAI gpt-4o-mini<br/>Skill Extraction · JSON mode]
     end
 
     subgraph "MongoDB Atlas M0"
         DB[(Collections<br/>jobs · skills · courses<br/>career_trajectories<br/>skill_transitions)]
-        VS{{Atlas Vector Search<br/>Index: cv_embedding<br/>768-dim cosine}}
+        VS{{Atlas Vector Search<br/>Indexes: vec_skills · vec_courses<br/>768-dim cosine (Matryoshka)}}
         AGG{{Aggregation Engine<br/>graphLookup · group · facet}}
         DB --- VS
         DB --- AGG
@@ -128,8 +124,8 @@ flowchart TB
     U -->|HTTPS| FE
     FE -->|REST + CORS| RT
     SVC -->|MongoDB Driver v6| DB
-    SVC -->|REST| G_EMB
-    SVC -->|REST| G_LLM
+    SVC -->|HTTPS| G_EMB
+    SVC -->|HTTPS| G_LLM
     ETL -->|Bulk Insert<br/>+ Embed| DB
 
     style VS fill:#00684A,color:#fff
@@ -143,15 +139,15 @@ flowchart TB
 
 | Component | Công nghệ | Trách nhiệm | Lý do chọn |
 |-----------|-----------|-------------|-------------|
-| **Client** | Next.js 14 + TypeScript + Tailwind + shadcn/ui (new-york) | UI/UX, render dashboard | Có sẵn template; tách rõ trách nhiệm với backend |
+| **Client** | Next.js 14 + TypeScript + Tailwind + shadcn/ui (new-york) | UI/UX, render dashboard | Tách rõ trách nhiệm với backend |
 | **Server framework** | **Hono** + TypeScript (Node 20) | REST API endpoints, orchestrate logic | TS-first, ~14KB, OpenAPI built-in, deploy edge-anywhere |
 | **API validation** | Zod + `@hono/zod-openapi` | Schema validation + auto-gen OpenAPI 3.1 | 1 source of truth: schema → types → docs → validation |
 | **API docs** | `@hono/swagger-ui` mount tại `/docs` | Swagger UI tự sinh từ Zod schema | Judges mở 1 link thấy đầy đủ API spec |
 | **Database** | MongoDB Atlas M0 (free tier) | Lưu data, chạy Vector Search + Aggregation | **Yêu cầu cốt lõi cuộc thi** + Vector Search GA |
 | **Mongo driver** | `mongodb` official Node driver v6 | Type-safe, Vector Search support | Official, async, connection pooling |
-| **Embedding** | Google Gemini `embedding-001` (768-dim) | Vector embedding CV/JD/skill | Free 1500 req/day, multilingual VN tốt |
-| **LLM** | Gemini 1.5 Flash | Extract skill từ CV text | Free tier, low latency, JSON mode |
-| **Graph Viz** | react-flow (client side) | Trajectory graph interactive | Best-in-class, MIT license |
+| **Embedding** | OpenAI `text-embedding-3-small` (768-dim via Matryoshka `dimensions=768`) | Vector embedding CV/JD/skill | Token-cheap (~$0.02 / 1M tok), strong cross-lingual VI↔EN, truncated 768-dim giữ index size nhỏ |
+| **LLM** | OpenAI `gpt-4o-mini` | Extract structured skills từ CV text | JSON mode native, latency p50 ~700ms, $0.15 / 1M input tok |
+| **Graph Viz** | **`@xyflow/react` 12.10** | Trajectory graph theo 3 flavor (Fast / Balanced / Comprehensive), pan & zoom, mini-map | Industry standard cho node-graph UI, MIT license, custom node + edge types để vẽ swimlane theo flavor, edge label HTML qua `<EdgeLabelRenderer>` |
 | **Logger** | pino + pino-pretty | Structured log JSON | Fast, prod-ready |
 | **ETL Layer** | Python 3.11 + pandas + pymongo | Offline data ingestion | Industry standard for data work |
 | **Scraping** | Playwright (Python) | ITViec JD scraping | Headless browser, anti-bot tốt |
@@ -166,26 +162,40 @@ sequenceDiagram
     participant U as User
     participant FE as Client (Next.js)
     participant API as Server (Hono)
-    participant G as Gemini
+    participant G as OpenAI
     participant M as MongoDB Atlas
 
     U->>FE: Paste CV + chọn target "MLE"
     FE->>API: POST /api/analyze {cv_text, target_role}
     Note over API: Zod validate request
-    API->>G: extract_skills (LLM)
-    G-->>API: {skills: [...]}
-    API->>G: embed(cv) + embed(target)
-    G-->>API: {cv_emb, target_emb}
+    API->>G: extract_skills (gpt-4o-mini, JSON mode)
+    G-->>API: {skills, inferred_role, inferred_years}
+    API->>G: embed(cv) + embed(targetPrompt)
+    G-->>API: {cv_emb 768d, target_emb 768d}
 
     par Gap Analysis
-        API->>M: $vectorSearch (skills)
-        M-->>API: Missing skills ranked
+        API->>M: $vectorSearch (skills) + evidence join
+        M-->>API: Missing skills ranked (hybrid)
     and Pivot Paths
-        API->>M: $graphLookup<br/>(skill_transitions)
+        API->>M: $graphLookup + edge-only fallback<br/>(skill_transitions)
         M-->>API: 3 path candidates
-    and Salary & Proof
+    and Proof Drawer
         API->>M: $facet<br/>(career_trajectories)
-        M-->>API: Salary + evidence
+        M-->>API: Sample size + lift + examples
+    and Similar Devs
+        API->>M: $vectorSearch or skill-overlap fallback
+        M-->>API: Role groups + avg salary
+    end
+
+    par Salary Band (Phase 2)
+        API->>M: $facet on jobs (level / company / skills)
+        M-->>API: VN salary distribution
+    and Salary Lift
+        API->>M: $group on pivots_detected
+        M-->>API: Median lift % per target
+    and Courses
+        API->>M: $vectorSearch on courses
+        M-->>API: Top-3 courses per missing skill
     end
 
     API-->>FE: Combined JSON response
@@ -202,7 +212,7 @@ flowchart LR
     VC -->|HTTPS| BR[User Browser]
     BR -->|REST + CORS| RW
     RW -->|Driver v6| MA[(MongoDB Atlas<br/>AWS Singapore)]
-    RW -->|REST| GM[Google Gemini API]
+    RW -->|HTTPS| GM[OpenAI API<br/>api.openai.com]
 
     style VC fill:#000,color:#fff
     style RW fill:#7F2EE6,color:#fff
@@ -218,16 +228,20 @@ flowchart LR
 | ADR | Decision | Alternative considered | Rationale |
 |-----|----------|------------------------|-----------|
 | ADR-01 | **2-service: client/ + server/** | Next.js full-stack với API Routes | User đã có frontend template; tách trách nhiệm; deploy + scale độc lập |
-| ADR-02 | Gemini embedding | OpenAI text-embedding-3-small | Free tier đủ MVP, multilingual VN |
+| ADR-02 | **OpenAI `text-embedding-3-small` + `gpt-4o-mini`** | Self-hosted embedding (`all-MiniLM-L6-v2`) + open-source LLM | OpenAI cho cross-lingual VI↔EN ổn định, JSON mode native với gpt-4o-mini, token cost rẻ ($0.02 / 1M tok cho embedding). Self-host đòi GPU + ops nằm ngoài scope hackathon. |
 | ADR-03 | Skip user auth | NextAuth + GitHub OAuth | Giảm scope; demo nhanh; privacy-first |
 | ADR-04 | Pre-compute `skill_transitions` offline | Runtime aggregation | P95 latency < 2s; aggregation phức tạp chạy 1 lần |
 | ADR-05 | Calibrated synthetic trajectories (~3,000, seed=42) | Scrape SO Survey | SO ZIP CDN rotates hashed paths → fragile; SO không có respondent_id cross-year → pivot phải INFER. Synthetic explicit, deterministic, demo reproducible cho judge. Schema giữ enum `source` để swap real data 1-1 sau. |
 | ADR-06 | Always label data provenance (`source` field) trong DB + UI | Bury origin | Minh bạch với BGK & người dùng; honesty = competitive moat trong career-advice space |
-| ADR-07 | 768-dim embedding (Gemini) | 1536-dim OpenAI | Storage + index size nhỏ hơn, đủ semantic |
+| ADR-07 | **768-dim embedding** qua OpenAI Matryoshka truncation (`dimensions=768` trên `text-embedding-3-small`) | 1536-dim native OpenAI / 3072-dim `text-embedding-3-large` | Storage + index size nhỏ hơn 2x (full DB ~50 MB nằm thoải mái trong M0); recall thực đo ~98% so với 1536-dim trong test PathFinder. |
 | ADR-08 | Vector index dùng cosine | euclidean / dotProduct | Industry default, robust với non-normalized |
 | ADR-09 | **Hono framework cho server** | Express / Fastify / NestJS | TS-first, OpenAPI built-in (`@hono/zod-openapi`), ~14KB, deploy edge-anywhere, demo trông modern |
 | ADR-10 | **Zod = single source of truth** | TypeScript types + Joi validation riêng | Zod schema → infer TS types + auto OpenAPI + runtime validation |
 | ADR-11 | **Server hoàn toàn stateless** | Session middleware | Dễ scale horizontal; frontend giữ state qua localStorage |
+| ADR-12 | **`@xyflow/react` cho trajectory graph** | Custom SVG, D3 (`d3-zoom`/`d3-drag`) | xyflow đã có sẵn pan/zoom, minimap, controls, node/edge type system — viết custom node + custom edge với HTML label hoàn toàn theo style PathFinder mất ~340 LoC, ngắn hơn D3 từ scratch. Đồng thời được bundle treeshake (~120 KB gzipped). |
+| ADR-13 (new) | **Role normalizer (`role-normalizer.ts`)** giữa LLM output và dataset | Match free-form role trực tiếp vào aggregation | LLM emit "Tech Lead" / "Senior Software Engineer" nhưng dataset chỉ có 10 canonical labels (Frontend / Backend / ML / AI / ...). Helper normalise → exact match → strong regex → weighted skill-stack vote, đảm bảo proof drawer và similar-devs có evidence. |
+| ADR-14 (new) | **Honest Mode visual contract** ở client (badge + ẩn card) | Backend trả `confidence` rồi để UI tự xử lý ngầm | Threshold rõ ràng (`N≥30` xanh, `10≤N<30` vàng, `<10` ẩn) khớp luôn với PRD §12 và F7.3; user thấy ngay vì sao recommend đáng tin (hoặc không). |
+| ADR-15 (new) | **`$facet` jobs collection cho VN salary band** | Truy vấn 3 lần (level / company / skills) | Single round-trip, đúng pattern proof drawer. Câu lệnh ngắn, dễ test. |
 
 ---
 
@@ -250,7 +264,7 @@ erDiagram
         number years_exp
         array skills
         string cv_text
-        vector cv_embedding "768-dim"
+        vector cv_embedding "768-dim (Matryoshka)"
     }
     jobs {
         ObjectId _id
@@ -326,7 +340,7 @@ type UserProfile = {
     years: number;                  // 1.0
   }>;
   cv_text: string;                  // raw paste
-  cv_embedding: number[];           // 768-dim vector từ Gemini
+  cv_embedding: number[];           // 768-dim (text-embedding-3-small truncated via Matryoshka)
   target_role?: string;             // "ML Engineer" hoặc custom
   target_embedding?: number[];      // 768-dim
   created_at: Date;
@@ -576,7 +590,7 @@ flowchart LR
     COURSERA[Coursera<br/>Public Catalog] --> CRS[courses<br/>~150 docs]
     LEARN[learn.mongodb.com] --> CRS
     
-    LLM[Gemini 1.5 Flash<br/>Synthetic VN Persona] --> CT
+    LLM[OpenAI gpt-4o-mini<br/>Synthetic VN Persona<br/>(when applicable)] --> CT
     
     CT --> AGG[Pre-compute<br/>skill_transitions]
     AGG --> ST[skill_transitions<br/>~2k docs]
@@ -1111,8 +1125,8 @@ async function hybridSkillRecommendation(cvEmbedding, currentRole) {
 | Vector Search top-10 | < 800ms | Pre-warm index, numCandidates 100 |
 | `$graphLookup` 4 hops | < 1.2s | Pre-filter `confidence` + `frequency`, index trên `from_skill` |
 | `$facet` Proof Drawer (5 facets) | < 1.5s | Indexes trên match keys |
-| Embedding generation | < 1.5s | Gemini latency baseline |
-| Full /api/analyze E2E | < 4s | Parallel calls (Promise.all) |
+| Embedding generation (OpenAI) | < 1.2s | `text-embedding-3-small` p50 ~400ms |
+| Full /api/analyze E2E | < 4s | 2 phases × `Promise.all` (gap/paths/proof/similar // courses/salary/lift) |
 
 ### 5.2 Optimization techniques
 
@@ -1307,7 +1321,6 @@ async function hybridSkillRecommendation(cvEmbedding, currentRole) {
 ```
 pathfinder/
 ├── README.md
-├── mail.md                          # Email xác nhận từ BTC
 ├── docs/
 │   ├── PRD.md                       # Product spec đầy đủ
 │   └── TECHNICAL_DOC.md             # Tài liệu này
@@ -1350,16 +1363,16 @@ pathfinder/
 │   │   │   ├── courses.ts           # /course-recommendations
 │   │   │   └── orchestrator.ts      # /analyze
 │   │   ├── services/
-│   │   │   ├── gemini.ts
+│   │   │   ├── openai.ts                   # extractSkillsFromCV, embed, embedBatch
 │   │   │   ├── aggregations/
-│   │   │   │   ├── gap-analysis.ts
 │   │   │   │   ├── pivot-path.ts
-│   │   │   │   ├── salary-inference.ts
-│   │   │   │   └── proof-drawer.ts
+│   │   │   │   ├── proof-drawer.ts
+│   │   │   │   ├── salary-band.ts          # $facet jobs (VN VND range + companies)
+│   │   │   │   └── salary-inference.ts     # $group on pivots_detected
 │   │   │   └── vector-search/
-│   │   │       ├── skills.ts
-│   │   │       ├── courses.ts
-│   │   │       └── similar-devs.ts
+│   │   │       ├── skills.ts               # gap analysis (evidence + semantic)
+│   │   │       ├── courses.ts              # hybrid filter + rank
+│   │   │       └── similar-devs.ts         # $vectorSearch + skill-overlap fallback
 │   │   ├── schemas/                 # Zod (single source of truth)
 │   │   │   ├── user.ts
 │   │   │   ├── job.ts
@@ -1378,7 +1391,7 @@ pathfinder/
 │   │   ├── 02_scrape_itviec.py           # curated VN JDs (extensible)
 │   │   ├── 03_load_skills_roadmap.py     # roadmap.sh JSON
 │   │   ├── 04_load_courses.py            # curated course catalog (~30 docs)
-│   │   ├── 05_embed_all.py               # Gemini text-embedding-004
+│   │   ├── 05_embed_all.py               # OpenAI text-embedding-3-small
 │   │   ├── 06_create_indexes.py          # Atlas Vector Search + regular
 │   │   ├── 07_compute_transitions.py     # aggregation $out
 │   │   ├── _common.py
@@ -1406,9 +1419,9 @@ LOG_LEVEL=info
 MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net
 MONGODB_DB=pathfinder
 
-GEMINI_API_KEY=<your_gemini_key>
-GEMINI_EMBEDDING_MODEL=text-embedding-004
-GEMINI_LLM_MODEL=gemini-1.5-flash
+OPENAI_API_KEY=<your_openai_key>
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_LLM_MODEL=gpt-4o-mini
 
 CORS_ORIGINS=http://localhost:3000,https://pathfinder-vn.vercel.app
 ```
@@ -1431,7 +1444,7 @@ cd pathfinder
 # 2. Setup server
 cd server
 cp .env.example .env
-# fill MONGODB_URI, GEMINI_API_KEY
+# fill MONGODB_URI, OPENAI_API_KEY
 npm install
 
 # 3. ETL (1 lần, ~30 phút) — chạy trong server/etl/
@@ -1439,13 +1452,16 @@ cd etl
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python 01_generate_trajectories.py                 # ~3000 synthetic SEA devs (seed=42)
-python 02_scrape_itviec.py                         # curated 20 VN jobs (override via data/itviec_sample.json)
+python 02_scrape_itviec.py                         # curated VN jobs (override via data/itviec_sample.json)
 python 03_load_skills_roadmap.py                   # roadmap.sh skill taxonomy
-python 04_load_courses.py                          # curated ~30 courses
-python 05_embed_all.py                             # Gemini embeddings (3-8 min)
+python 04_load_courses.py                          # curated course catalogue
+python 05_embed_all.py                             # OpenAI text-embedding-3-small (3-8 min)
 python 06_create_indexes.py                        # Atlas Vector Search + regular indexes
 python 07_compute_transitions.py                   # pre-compute skill_transitions
 cd ..
+
+# Hoặc chạy gọn từ thư mục server/ bằng wrapper npm script:
+# npm run etl:all  →  thực thi 01 → 07 tuần tự, in tiến độ.
 
 # 4. Run server (Terminal 1)
 npm run dev                                        # → http://localhost:4000
@@ -1473,9 +1489,10 @@ npm run dev                                        # → http://localhost:3000
 | MongoDB Atlas Vector Search Docs | https://www.mongodb.com/docs/atlas/atlas-vector-search/ |
 | MongoDB `$graphLookup` Docs | https://www.mongodb.com/docs/manual/reference/operator/aggregation/graphLookup/ |
 | MongoDB `$facet` Docs | https://www.mongodb.com/docs/manual/reference/operator/aggregation/facet/ |
-| Google Gemini API | https://ai.google.dev/gemini-api/docs/embeddings |
+| OpenAI API · Embeddings | https://platform.openai.com/docs/guides/embeddings |
+| OpenAI · Structured outputs (gpt-4o-mini) | https://platform.openai.com/docs/guides/structured-outputs |
 | Next.js App Router | https://nextjs.org/docs/app |
-| react-flow | https://reactflow.dev/ |
+| @xyflow/react (React Flow) | https://reactflow.dev/ |
 | roadmap.sh GitHub | https://github.com/kamranahmedse/developer-roadmap |
 | MUGVN Hackathon 2026 | https://mini-hackathon-2026.mugvn.com/ |
 

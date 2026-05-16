@@ -9,6 +9,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { SimilarDevsGroup } from "@/lib/pathfinder/types";
+import {
+  DataSourceBadges,
+  HONEST_THRESHOLDS,
+  HonestModeBadge,
+  InsufficientDataPlaceholder,
+} from "./honest-mode";
 
 interface SimilarDevsCardProps {
   groups: SimilarDevsGroup[];
@@ -23,6 +29,8 @@ function formatSalary(usd: number | null): string {
 export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
   const top = [...groups].sort((a, b) => b.count - a.count).slice(0, 8);
   const max = top.reduce((m, g) => Math.max(m, g.count), 1);
+  const totalN = groups.reduce((sum, g) => sum + g.count, 0);
+  const hide = totalN < HONEST_THRESHOLDS.hide;
 
   return (
     <Card>
@@ -37,8 +45,19 @@ export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
           role.
         </p>
       </CardHeader>
-      <CardContent>
-        {top.length === 0 ? (
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <HonestModeBadge n={totalN} unit="similar devs" />
+          <DataSourceBadges sources={["synthetic_vn_cohort", "vec_trajectory_snapshot"]} />
+        </div>
+
+        {hide ? (
+          <InsufficientDataPlaceholder
+            n={totalN}
+            title="Not enough peers to cluster"
+            description="The trajectory cohort matching your stack is too small to surface a meaningful role distribution. Try a more populated start skill or seed more rows in the ETL."
+          />
+        ) : top.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No similar developers found in this slice of the data.
           </p>

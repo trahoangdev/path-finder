@@ -1,7 +1,33 @@
 "use client";
 
 import * as React from "react";
-import { GitBranch, Rabbit, Scale, Telescope } from "lucide-react";
+import {
+  GitBranch,
+  Rabbit,
+  Scale,
+  Telescope,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  MarkerType,
+  Position,
+  Handle,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
+  type Edge,
+  type EdgeProps,
+  type Node,
+  type NodeProps,
+  type NodeTypes,
+  type EdgeTypes,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+
 import {
   Card,
   CardContent,
@@ -22,14 +48,14 @@ type FlavorKey = "fast" | "balanced" | "comprehensive";
 
 interface FlavorMeta {
   label: string;
-  icon: typeof Rabbit;
-  /** Main accent color — used for edges, the filled target node, and arrows. */
+  icon: LucideIcon;
+  /** Solid accent color used for edges, target node fill, and lane label text. */
   color: string;
-  /** Subtle wash for the lane stripe (very translucent). */
+  /** Very translucent wash for the lane backdrop. */
   laneWash: string;
   /** Translucent fill for the lane label pill. */
   pillBg: string;
-  /** Tinted fill for the middle skill nodes (still translucent over the canvas). */
+  /** Tinted fill for the middle skill nodes. */
   nodeBg: string;
   /** Solid border color matching the flavor for middle nodes & lane pill. */
   border: string;
@@ -67,60 +93,323 @@ const FLAVOR_CONFIG: Record<FlavorKey, FlavorMeta> = {
 
 const FLAVOR_ORDER: FlavorKey[] = ["fast", "balanced", "comprehensive"];
 
-// Layout constants for the SVG canvas.
-const LANE_HEIGHT = 110;
-const NODE_HEIGHT = 48;
-const HORIZONTAL_PADDING = 28;
-const COLUMN_MIN = 152;
-// Wider gap so each arrow has room for a stacked "Nmo / +N%" edge label
-// without overlapping into the adjacent nodes.
-const COLUMN_GAP = 72;
-const LANE_LABEL_WIDTH = 168;
-// Edge labels are rendered in a fixed-width zone centered above the arrow —
-// wider than COLUMN_GAP so 3-digit percentages fit cleanly.
-const EDGE_LABEL_WIDTH = 84;
+// Layout constants. The graph is laid out left-to-right by depth, one lane
+// per flavor stacked vertically.
+const LANE_HEIGHT = 132;
+const LANE_GAP = 8;
+const NODE_WIDTH = 168;
+const NODE_HEIGHT = 56;
+const COLUMN_GAP = 92;
+const LANE_LABEL_WIDTH = 188;
+const PADDING_X = 24;
+const PADDING_TOP = 12;
 
-interface ResolvedNode {
+// ─── Node + edge data shapes ────────────────────────────────────────────────
+
+type SkillNodeData = {
+  label: string;
+  isStart: boolean;
+  isTarget: boolean;
+  meta: FlavorMeta;
+  flavor: FlavorKey;
+};
+
+type LaneNodeData = {
+  meta: FlavorMeta;
+  flavor: FlavorKey;
+  path: PivotPath;
+  laneWidth: number;
+};
+
+type EdgeData = {
+  months?: number;
+  lift?: number;
+  color: string;
+};
+
+type SkillNodeType = Node<SkillNodeData, "skill">;
+type LaneNodeType = Node<LaneNodeData, "lane">;
+type LabeledEdgeType = Edge<EdgeData, "labeled">;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+interface ResolvedSkill {
   label: string;
   isStart: boolean;
   isTarget: boolean;
 }
 
-function pathToNodes(path: PivotPath): ResolvedNode[] {
+function pathToSkillSequence(path: PivotPath): ResolvedSkill[] {
   if (path.full_path.length === 0) return [];
-  const nodes: ResolvedNode[] = [
+  const out: ResolvedSkill[] = [
     { label: path.full_path[0].from_skill, isStart: true, isTarget: false },
   ];
   for (let i = 0; i < path.full_path.length; i += 1) {
     const edge = path.full_path[i];
     const isLast = i === path.full_path.length - 1;
-    nodes.push({ label: edge.to_skill, isStart: false, isTarget: isLast });
+    out.push({ label: edge.to_skill, isStart: false, isTarget: isLast });
   }
-  return nodes;
+  return out;
 }
+
+interface GraphBuild {
+  nodes: Array<LaneNodeType | SkillNodeType>;
+  edges: LabeledEdgeType[];
+  width: number;
+  height: number;
+}
+
+function buildGraph(orderedPaths: PivotPath[]): GraphBuild {
+  if (orderedPaths.length === 0) {
+    return { nodes: [], edges: [], width: 0, height: 0 };
+  }
+  const maxCols = orderedPaths.reduce(
+    (max, p) => Math.max(max, pathToSkillSequence(p).length),
+    0,
+  );
+  const totalWidth =
+    LANE_LABEL_WIDTH +
+    PADDING_X +
+    maxCols * NODE_WIDTH +
+    Math.max(maxCols - 1, 0) * COLUMN_GAP +
+    PADDING_X;
+
+  const nodes: Array<LaneNodeType | SkillNodeType> = [];
+  const edges: LabeledEdgeType[] = [];
+
+  orderedPaths.forEach((path, laneIdx) => {
+    const meta = FLAVOR_CONFIG[path.flavor as FlavorKey];
+    const laneY = PADDING_TOP + laneIdx * (LANE_HEIGHT + LANE_GAP);
+
+    // ── Lane backdrop (rendered first so it sits behind everything) ──
+    nodes.push({
+      id: `lane-${path.flavor}`,
+      type: "lane",
+      position: { x: 0, y: laneY },
+      data: {
+        meta,
+        flavor: path.flavor as FlavorKey,
+        path,
+        laneWidth: totalWidth,
+      },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      zIndex: -1,
+      style: { width: totalWidth, height: LANE_HEIGHT, pointerEvents: "none" },
+    });
+
+    // ── Skill nodes ──
+    const skills = pathToSkillSequence(path);
+    skills.forEach((sk, idx) => {
+      const x =
+        LANE_LABEL_WIDTH +
+        PADDING_X +
+        idx * (NODE_WIDTH + COLUMN_GAP);
+      const y = laneY + (LANE_HEIGHT - NODE_HEIGHT) / 2;
+      const nodeId = `${path.flavor}-${idx}`;
+
+      nodes.push({
+        id: nodeId,
+        type: "skill",
+        position: { x, y },
+        data: {
+          label: sk.label,
+          isStart: sk.isStart,
+          isTarget: sk.isTarget,
+          meta,
+          flavor: path.flavor as FlavorKey,
+        },
+        draggable: false,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        style: { width: NODE_WIDTH, height: NODE_HEIGHT },
+      });
+
+      if (idx > 0) {
+        const edge = path.full_path[idx - 1];
+        edges.push({
+          id: `e-${path.flavor}-${idx}`,
+          source: `${path.flavor}-${idx - 1}`,
+          target: nodeId,
+          type: "labeled",
+          data: { months: edge.months, lift: edge.lift, color: meta.color },
+          style: { stroke: meta.color, strokeWidth: 2.5 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: meta.color,
+            width: 18,
+            height: 18,
+          },
+        });
+      }
+    });
+  });
+
+  const totalHeight =
+    PADDING_TOP * 2 + orderedPaths.length * (LANE_HEIGHT + LANE_GAP);
+  return { nodes, edges, width: totalWidth, height: totalHeight };
+}
+
+// ─── Custom node + edge components ──────────────────────────────────────────
+
+function LaneNode({ data }: NodeProps<LaneNodeType>) {
+  const { meta, path, laneWidth } = data;
+  const Icon = meta.icon;
+  return (
+    <div
+      className="relative h-full"
+      style={{
+        width: laneWidth,
+        backgroundColor: meta.laneWash,
+        borderBottom: "1px solid color-mix(in oklab, currentColor 8%, transparent)",
+      }}
+    >
+      <div
+        className="absolute left-2 top-1/2 -translate-y-1/2 flex h-[calc(100%-16px)] flex-col justify-center gap-1 rounded-md border px-3 py-2 text-xs font-semibold shadow-sm"
+        style={{
+          width: LANE_LABEL_WIDTH - 16,
+          backgroundColor: meta.pillBg,
+          color: meta.color,
+          borderColor: meta.border,
+        }}
+      >
+        <span className="flex items-center gap-1.5 text-[13px]">
+          <Icon className="size-4" />
+          <span>{meta.label}</span>
+        </span>
+        <div className="flex items-center gap-2 font-mono text-[11px] font-medium opacity-95">
+          <span>{Math.round(path.total_months)}mo</span>
+          <span className="opacity-50">·</span>
+          <span className="text-emerald-700 dark:text-emerald-300">
+            +{Math.round(path.total_lift_pct)}%
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillNode({ data }: NodeProps<SkillNodeType>) {
+  const { label, isStart, isTarget, meta } = data;
+  const style: React.CSSProperties = isTarget
+    ? { backgroundColor: meta.color, borderColor: meta.color, color: "#ffffff" }
+    : isStart
+      ? {
+          backgroundColor: "rgba(148, 163, 184, 0.18)",
+          borderColor: "rgba(148, 163, 184, 0.55)",
+          color: "var(--foreground)",
+        }
+      : {
+          backgroundColor: meta.nodeBg,
+          borderColor: meta.border,
+          color: "var(--foreground)",
+        };
+
+  return (
+    <div
+      className="flex h-full w-full items-center justify-center rounded-md border px-2 text-center text-[12px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md"
+      style={style}
+      title={label}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        isConnectable={false}
+        style={{ opacity: 0, width: 1, height: 1, border: "none" }}
+      />
+      <span className="line-clamp-2">{label}</span>
+      <Handle
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+        style={{ opacity: 0, width: 1, height: 1, border: "none" }}
+      />
+    </div>
+  );
+}
+
+function LabeledEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style,
+  markerEnd,
+  data,
+}: EdgeProps<LabeledEdgeType>) {
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 12,
+  });
+
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+      <EdgeLabelRenderer>
+        <div
+          className="pointer-events-none flex items-center gap-1 text-[11px] leading-none"
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY}px)`,
+          }}
+        >
+          {data?.months ? (
+            <span className="rounded-sm border border-border/70 bg-background px-1.5 py-0.5 font-mono font-semibold text-foreground shadow-sm">
+              {Math.round(data.months)}mo
+            </span>
+          ) : null}
+          {data?.lift ? (
+            <span className="rounded-sm border border-emerald-400/50 bg-background px-1.5 py-0.5 font-mono font-semibold text-emerald-700 shadow-sm dark:text-emerald-300">
+              +{Math.round(data.lift)}%
+            </span>
+          ) : null}
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const NODE_TYPES: NodeTypes = {
+  lane: LaneNode as unknown as NodeTypes[string],
+  skill: SkillNode as unknown as NodeTypes[string],
+};
+const EDGE_TYPES: EdgeTypes = {
+  labeled: LabeledEdge as unknown as EdgeTypes[string],
+};
+
+// ─── Card ───────────────────────────────────────────────────────────────────
 
 export function TrajectoryGraphCard({
   paths,
   similar,
   targetRole,
 }: TrajectoryGraphCardProps) {
-  const orderedPaths = FLAVOR_ORDER
-    .map((flavor) => paths.find((p) => p.flavor === flavor))
-    .filter((p): p is PivotPath => Boolean(p && p.full_path.length > 0));
-
-  const maxColumns = orderedPaths.reduce(
-    (max, p) => Math.max(max, pathToNodes(p).length),
-    0,
+  const orderedPaths = React.useMemo(
+    () =>
+      FLAVOR_ORDER.map((flavor) => paths.find((p) => p.flavor === flavor)).filter(
+        (p): p is PivotPath => Boolean(p && p.full_path.length > 0),
+      ),
+    [paths],
   );
 
-  const topSimilar = [...similar]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
+  const { nodes, edges, height } = React.useMemo(
+    () => buildGraph(orderedPaths),
+    [orderedPaths],
+  );
 
-  const canvasWidth =
-    LANE_LABEL_WIDTH + HORIZONTAL_PADDING + maxColumns * COLUMN_MIN +
-    Math.max(maxColumns - 1, 0) * COLUMN_GAP + HORIZONTAL_PADDING;
-  const canvasHeight = LANE_HEIGHT * Math.max(orderedPaths.length, 1) + 24;
+  const topSimilar = React.useMemo(
+    () => [...similar].sort((a, b) => b.count - a.count).slice(0, 3),
+    [similar],
+  );
 
   if (orderedPaths.length === 0) {
     return (
@@ -153,51 +442,56 @@ export function TrajectoryGraphCard({
         <p className="text-sm text-muted-foreground">
           Each lane is a separate{" "}
           <code className="rounded bg-muted px-1 text-xs">$graphLookup</code>{" "}
-          discovery. Edge labels show average months and salary lift sourced
-          from real-cohort transitions.
+          discovery. Pan & zoom, fit-to-view from the bottom-left controls.
+          Edge labels show average months + salary lift from cohort data.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Legend />
 
-        <div className="overflow-x-auto rounded-lg border bg-linear-to-br from-muted/60 to-background p-3 dark:from-slate-900/60 dark:to-slate-950/80">
-          <svg
-            width={canvasWidth}
-            height={canvasHeight}
-            viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
-            role="img"
-            aria-label="Pivot trajectory graph"
-            className="text-foreground"
+        <div
+          className="trajectory-flow relative w-full overflow-hidden rounded-lg border bg-linear-to-br from-muted/60 to-background dark:from-slate-900/60 dark:to-slate-950/80"
+          style={{ height: Math.max(height + 24, 320) }}
+        >
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+            minZoom={0.4}
+            maxZoom={1.5}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            panOnScroll
+            panOnScrollMode={"free" as never}
+            zoomOnScroll={false}
+            zoomOnPinch
+            proOptions={{ hideAttribution: true }}
+            colorMode="system"
           >
-            <defs>
-              {FLAVOR_ORDER.map((flavor) => (
-                <marker
-                  key={flavor}
-                  id={`arrow-${flavor}`}
-                  viewBox="0 0 10 10"
-                  refX="8"
-                  refY="5"
-                  markerWidth="6"
-                  markerHeight="6"
-                  orient="auto-start-reverse"
-                >
-                  <path
-                    d="M 0 0 L 10 5 L 0 10 z"
-                    fill={FLAVOR_CONFIG[flavor].color}
-                  />
-                </marker>
-              ))}
-            </defs>
-
-            {orderedPaths.map((path, laneIdx) => (
-              <Lane
-                key={path.flavor}
-                path={path}
-                laneIdx={laneIdx}
-                maxColumns={maxColumns}
+            <Background gap={24} size={1} className="opacity-50" />
+            <Controls
+              position="bottom-left"
+              showInteractive={false}
+              className="bg-background/80! border! text-foreground!"
+            />
+            {nodes.length > 12 ? (
+              <MiniMap
+                pannable
+                zoomable
+                position="bottom-right"
+                className="border! bg-background/80!"
+                nodeColor={(n) => {
+                  const d = n.data as Partial<SkillNodeData | LaneNodeData>;
+                  return d.meta?.color ?? "#94a3b8";
+                }}
+                nodeStrokeWidth={0}
               />
-            ))}
-          </svg>
+            ) : null}
+          </ReactFlow>
         </div>
 
         {topSimilar.length > 0 && (
@@ -261,164 +555,5 @@ function Legend() {
         </span>
       </span>
     </div>
-  );
-}
-
-interface LaneProps {
-  path: PivotPath;
-  laneIdx: number;
-  maxColumns: number;
-}
-
-function Lane({ path, laneIdx, maxColumns: _maxColumns }: LaneProps) {
-  const nodes = pathToNodes(path);
-  const meta = FLAVOR_CONFIG[path.flavor];
-  const laneY = laneIdx * LANE_HEIGHT;
-  const centerY = laneY + LANE_HEIGHT / 2;
-
-  return (
-    <g>
-      {/* Lane wash + 1 px divider below for separation between lanes */}
-      <rect
-        x={0}
-        y={laneY}
-        width="100%"
-        height={LANE_HEIGHT}
-        fill={meta.laneWash}
-      />
-      <line
-        x1={0}
-        y1={laneY + LANE_HEIGHT - 0.5}
-        x2="100%"
-        y2={laneY + LANE_HEIGHT - 0.5}
-        stroke="currentColor"
-        strokeOpacity={0.08}
-        strokeWidth={1}
-      />
-
-      {/* Lane label on the far left — two rows with comfortable spacing.
-          Outer foreignObject height matches LANE_HEIGHT - 16 so the pill never
-          gets vertically clipped at any LANE_HEIGHT setting. */}
-      <foreignObject
-        x={6}
-        y={laneY + 12}
-        width={LANE_LABEL_WIDTH - 16}
-        height={LANE_HEIGHT - 24}
-      >
-        <div
-          className="flex h-full flex-col justify-center gap-1 rounded-md border px-3 py-2 text-xs font-semibold shadow-sm"
-          style={{
-            backgroundColor: meta.pillBg,
-            color: meta.color,
-            borderColor: meta.border,
-          }}
-        >
-          <span className="flex items-center gap-1.5 text-[13px]">
-            {React.createElement(meta.icon, { className: "size-4" })}
-            <span>{meta.label}</span>
-          </span>
-          <div className="flex items-center gap-2 font-mono text-[11px] font-medium opacity-95">
-            <span>{Math.round(path.total_months)}mo</span>
-            <span className="opacity-50">·</span>
-            <span className="text-emerald-700 dark:text-emerald-300">
-              +{Math.round(path.total_lift_pct)}%
-            </span>
-          </div>
-        </div>
-      </foreignObject>
-
-      {/* Nodes + edges */}
-      {nodes.map((node, idx) => {
-        const x =
-          LANE_LABEL_WIDTH + HORIZONTAL_PADDING + idx * (COLUMN_MIN + COLUMN_GAP);
-        const nodeWidth = COLUMN_MIN;
-        const nodeX = x;
-        const nodeY = centerY - NODE_HEIGHT / 2;
-
-        const prevX =
-          idx > 0
-            ? LANE_LABEL_WIDTH + HORIZONTAL_PADDING +
-              (idx - 1) * (COLUMN_MIN + COLUMN_GAP) +
-              nodeWidth
-            : null;
-        const edgeData = idx > 0 ? path.full_path[idx - 1] : null;
-
-        return (
-          <g key={`${path.flavor}-${idx}`}>
-            {prevX !== null && edgeData ? (
-              <>
-                <line
-                  x1={prevX}
-                  y1={centerY}
-                  x2={nodeX}
-                  y2={centerY}
-                  stroke={meta.color}
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  markerEnd={`url(#arrow-${path.flavor})`}
-                />
-                {/*
-                  Edge-label zone — centered above the arrow midpoint.
-                  EDGE_LABEL_WIDTH > COLUMN_GAP so 3-digit percentages like
-                  "+101%" don't get clipped or overlap the adjacent node.
-                */}
-                <foreignObject
-                  x={(prevX + nodeX) / 2 - EDGE_LABEL_WIDTH / 2}
-                  y={centerY - 40}
-                  width={EDGE_LABEL_WIDTH}
-                  height={32}
-                >
-                  <div className="flex items-center justify-center gap-1 text-[11px] leading-none">
-                    {edgeData.months ? (
-                      <span className="rounded-sm border border-border/70 bg-background px-1.5 py-0.5 font-mono font-semibold text-foreground shadow-sm">
-                        {Math.round(edgeData.months)}mo
-                      </span>
-                    ) : null}
-                    {edgeData.lift ? (
-                      <span className="rounded-sm border border-emerald-400/50 bg-background px-1.5 py-0.5 font-mono font-semibold text-emerald-700 shadow-sm dark:text-emerald-300">
-                        +{Math.round(edgeData.lift)}%
-                      </span>
-                    ) : null}
-                  </div>
-                </foreignObject>
-              </>
-            ) : null}
-
-            <foreignObject
-              x={nodeX}
-              y={nodeY}
-              width={nodeWidth}
-              height={NODE_HEIGHT}
-            >
-              <div
-                className="flex h-full items-center justify-center rounded-md border px-2 text-center text-[12px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md"
-                style={
-                  node.isTarget
-                    ? {
-                        backgroundColor: meta.color,
-                        borderColor: meta.color,
-                        color: "#ffffff",
-                      }
-                    : node.isStart
-                      ? {
-                          backgroundColor: "rgba(148, 163, 184, 0.18)",
-                          borderColor: "rgba(148, 163, 184, 0.55)",
-                          color: "var(--foreground)",
-                        }
-                      : {
-                          backgroundColor: meta.nodeBg,
-                          borderColor: meta.border,
-                          color: "var(--foreground)",
-                        }
-                }
-                title={node.label}
-              >
-                <span className="line-clamp-2">{node.label}</span>
-              </div>
-            </foreignObject>
-          </g>
-        );
-      })}
-    </g>
   );
 }

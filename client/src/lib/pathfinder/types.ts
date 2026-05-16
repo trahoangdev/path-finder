@@ -145,6 +145,53 @@ export interface CoursesForSkill {
   courses: CoursePublic[];
 }
 
+// ─── /api/analyze: salary band sub-tree ──────────────────────────────────────
+
+export interface SalaryBandLevel {
+  level: string;
+  count: number;
+  /** Average of `salary_min` across matches at this seniority (VND millions). */
+  median_min_vnd: number;
+  /** Average of `salary_max` across matches at this seniority (VND millions). */
+  median_max_vnd: number;
+  min_vnd: number;
+  max_vnd: number;
+}
+
+export interface SalaryBandCompany {
+  company: string;
+  count: number;
+  top_title: string;
+  top_level?: string;
+}
+
+export interface SalaryBandSkill {
+  skill: string;
+  count: number;
+}
+
+export interface SalaryBandReport {
+  target_role: string;
+  total_matches: number;
+  overall: {
+    median_min_vnd: number;
+    median_max_vnd: number;
+    min_vnd: number;
+    max_vnd: number;
+  } | null;
+  by_level: SalaryBandLevel[];
+  top_companies: SalaryBandCompany[];
+  top_required_skills: SalaryBandSkill[];
+  source: string;
+}
+
+export interface PivotSalaryLift {
+  to_role: string;
+  sample_size: number;
+  avg_months: number;
+  median_lift_pct: number;
+}
+
 export interface AnalyzeResponse {
   profile: ExtractedProfile;
   gap_analysis: { missing_skills: MissingSkill[] };
@@ -152,6 +199,8 @@ export interface AnalyzeResponse {
   proof_drawer: ProofDrawerResponse;
   similar_devs: { groups: SimilarDevsGroup[] };
   courses_by_skill: CoursesForSkill[];
+  salary_band: SalaryBandReport;
+  pivot_salary_lift: PivotSalaryLift[];
   timings_ms: {
     extract: number;
     embed: number;
@@ -160,6 +209,7 @@ export interface AnalyzeResponse {
     proof: number;
     similar: number;
     courses: number;
+    salary: number;
     total: number;
   };
 }

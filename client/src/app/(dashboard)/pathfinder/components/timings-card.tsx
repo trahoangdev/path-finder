@@ -22,6 +22,7 @@ const STAGES: Array<{ key: keyof AnalyzeResponse["timings_ms"]; label: string }>
   { key: "proof", label: "proof drawer" },
   { key: "similar", label: "similar devs" },
   { key: "courses", label: "course matching" },
+  { key: "salary", label: "salary band" },
 ];
 
 export function TimingsCard({ timings }: TimingsCardProps) {

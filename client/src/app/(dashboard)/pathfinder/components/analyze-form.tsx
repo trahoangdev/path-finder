@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Play, RotateCcw, Wand2 } from "lucide-react";
+import { Loader2, Play, RotateCcw, UserCog } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -22,8 +22,11 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import type { AnalyzeRequest } from "@/lib/pathfinder/types";
-import { SAMPLE_CV } from "../sample-cv";
+import { DEMO_PERSONAS, type DemoPersona } from "../sample-cv";
 
+// PRD §11 / Phase 1: dropdown carries 12 preset target roles. Anything not in
+// this list still works (the input is free-form), but presets are what the
+// dataset has the most evidence for.
 const TARGET_ROLE_PRESETS = [
   "AI Engineer",
   "Machine Learning Engineer",
@@ -34,6 +37,9 @@ const TARGET_ROLE_PRESETS = [
   "Engineering Manager",
   "Mobile Engineer (React Native)",
   "Full-stack Engineer",
+  "Embedded Engineer",
+  "QA Automation Engineer",
+  "Security Engineer",
 ];
 
 interface AnalyzeFormProps {
@@ -52,8 +58,9 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
   const charCount = cvText.length;
   const charValid = charCount >= 50 && charCount <= 8000;
 
-  const handleFill = () => {
-    setCvText(SAMPLE_CV);
+  const handleFillPersona = (persona: DemoPersona) => {
+    setCvText(persona.cv_text);
+    setTargetRole(persona.target_role);
     setValidationError(null);
   };
 
@@ -93,17 +100,24 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
               paths, proof drawer and similar-dev clustering on MongoDB Atlas.
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleFill}
-              disabled={loading}
-            >
-              <Wand2 className="size-4" />
-              Fill with sample CV
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {DEMO_PERSONAS.map((persona) => (
+              <Button
+                key={persona.id}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleFillPersona(persona)}
+                disabled={loading}
+                title={persona.pivot}
+              >
+                <UserCog className="size-4" />
+                {persona.name}
+                <span className="ml-1 hidden text-[10px] text-muted-foreground sm:inline">
+                  · {persona.pivot}
+                </span>
+              </Button>
+            ))}
             <Button
               type="button"
               variant="ghost"
