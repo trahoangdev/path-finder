@@ -28,7 +28,7 @@ recursively (up to max_depth hops), returning 3 path flavors: **fast** (shortest
 });
 
 export const pathsApp = new OpenAPIHono().openapi(route, async (c) => {
-  const { start_skill, target_skill, max_depth } = c.req.valid('json');
-  const paths = await pivotPaths({ start_skill, target_skill, max_depth });
+  const { start_skill, start_role, target_skill, max_depth } = c.req.valid('json');
+  const paths = await pivotPaths({ start_skill, start_role, target_skill, max_depth });
   return c.json({ paths }, 200);
 });

@@ -83,7 +83,12 @@ async function evidenceGap(targetRole: string, limit: number): Promise<MissingSk
   const rows = await collections
     .skillTransitions()
     .aggregate<Row>([
-      { $match: { to_skill: targetRole } },
+      {
+        $match: {
+          to_skill: targetRole,
+          $or: [{ edge_kind: 'skill_to_role' }, { edge_kind: { $exists: false } }],
+        },
+      },
       { $sort: { frequency: -1, avg_salary_lift_pct: -1 } },
       { $limit: Math.max(limit * 2, 12) },
       {
@@ -199,6 +204,11 @@ async function semanticGap(
         let: { skillName: '$name' },
         pipeline: [
           { $match: { $expr: { $eq: ['$from_skill', '$$skillName'] } } },
+          {
+            $match: {
+              $or: [{ edge_kind: 'skill_to_role' }, { edge_kind: { $exists: false } }],
+            },
+          },
           { $sort: { frequency: -1 } },
           { $limit: 1 },
           {

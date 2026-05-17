@@ -90,6 +90,7 @@ export const GapAnalysisResponseSchema = z
 export const PivotPathRequestSchema = z
   .object({
     start_skill: z.string().min(1),
+    start_role: z.string().min(1).optional(),
     target_skill: z.string().min(1),
     max_depth: z.number().int().min(1).max(6).default(4),
   })
