@@ -11,33 +11,33 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTranslations } from "@/contexts/locale-context";
 import type { PivotPath } from "@/lib/pathfinder/types";
-import { DataSourceBadges } from "./honest-mode";
+import {
+  AggregationPipelineBadges,
+  DataSourceBadges,
+} from "./honest-mode";
+
+/** Stages in `server/src/services/aggregations/pivot-path.ts` (+ optional $graphLookup). */
+const PIVOT_AGG_STAGES = [
+  "match",
+  "project",
+  "sort",
+  "limit",
+  "graphLookup",
+] as const;
 
 interface PivotPathsCardProps {
   paths: PivotPath[];
 }
 
-const FLAVOR_META: Record<
-  PivotPath["flavor"],
-  { label: string; icon: typeof Rabbit; tagline: string }
-> = {
-  fast: {
-    label: "Fast",
-    icon: Rabbit,
-    tagline: "Shortest #skills, fastest landing",
-  },
-  balanced: {
-    label: "Balanced",
-    icon: Scale,
-    tagline: "Best months ↔ salary lift trade-off",
-  },
-  comprehensive: {
-    label: "Comprehensive",
-    icon: Telescope,
-    tagline: "Deepest coverage, highest confidence",
-  },
+const FLAVOR_ICONS: Record<PivotPath["flavor"], typeof Rabbit> = {
+  fast: Rabbit,
+  balanced: Scale,
+  comprehensive: Telescope,
 };
+
+const FLAVOR_KEYS = ["fast", "balanced", "comprehensive"] as const;
 
 const CONFIDENCE_STYLES = {
   high: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
@@ -46,7 +46,8 @@ const CONFIDENCE_STYLES = {
 };
 
 export function PivotPathsCard({ paths }: PivotPathsCardProps) {
-  const ordered = (["fast", "balanced", "comprehensive"] as const).map(
+  const t = useTranslations();
+  const ordered = FLAVOR_KEYS.map(
     (flavor) => paths.find((p) => p.flavor === flavor),
   );
   const defaultTab =
@@ -55,16 +56,18 @@ export function PivotPathsCard({ paths }: PivotPathsCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Pivot paths</CardDescription>
+        <CardDescription>{t("pathfinder.pivot.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <Map className="size-4 text-primary" />
-          Three routes from your stack to the target
+          {t("pathfinder.pivot.title")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Computed by MongoDB&apos;s{" "}
-          <code className="rounded bg-muted px-1 text-xs">$graphLookup</code>{" "}
-          over the pre-computed <em>skill_transitions</em> graph.
+          {t("pathfinder.pivot.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          className="pt-1"
+          stages={PIVOT_AGG_STAGES}
+        />
         <DataSourceBadges
           className="pt-1"
           sources={["skill_transitions", "synthetic_vn_cohort"]}
@@ -73,30 +76,27 @@ export function PivotPathsCard({ paths }: PivotPathsCardProps) {
       <CardContent>
         <Tabs defaultValue={defaultTab} className="gap-4">
           <TabsList className="w-full sm:w-fit">
-            {(["fast", "balanced", "comprehensive"] as const).map((flavor) => {
-              const meta = FLAVOR_META[flavor];
-              const Icon = meta.icon;
+            {FLAVOR_KEYS.map((flavor) => {
+              const Icon = FLAVOR_ICONS[flavor];
               return (
                 <TabsTrigger key={flavor} value={flavor} className="gap-2">
                   <Icon className="size-3.5" />
-                  {meta.label}
+                  {t(`pivotFlavor.${flavor}`)}
                 </TabsTrigger>
               );
             })}
           </TabsList>
 
-          {(["fast", "balanced", "comprehensive"] as const).map((flavor) => {
+          {FLAVOR_KEYS.map((flavor) => {
             const path = paths.find((p) => p.flavor === flavor);
-            const meta = FLAVOR_META[flavor];
             return (
               <TabsContent key={flavor} value={flavor} className="mt-0">
                 <p className="mb-3 text-xs text-muted-foreground">
-                  {meta.tagline}
+                  {t(`pivotFlavor.${flavor}Tagline`)}
                 </p>
                 {!path || path.full_path.length === 0 ? (
                   <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                    No path found for this flavor — graph is sparse for this
-                    direction.
+                    {t("pathfinder.pivot.noPath")}
                   </p>
                 ) : (
                   <div className="flex flex-col gap-4">
@@ -159,27 +159,31 @@ function PathRibbon({ path }: { path: PivotPath }) {
 }
 
 function PathFooter({ path }: { path: PivotPath }) {
+  const t = useTranslations();
   return (
     <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-4">
-      <FooterStat label="Steps" value={String(path.path_length)} />
       <FooterStat
-        label="Total time"
+        label={t("pathfinder.pivot.steps")}
+        value={String(path.path_length)}
+      />
+      <FooterStat
+        label={t("pathfinder.pivot.totalTime")}
         value={`${Math.round(path.total_months)} mo`}
       />
       <FooterStat
-        label="Salary lift"
+        label={t("pathfinder.pivot.salaryLift")}
         value={`+${Math.round(path.total_lift_pct)}%`}
         accent
       />
       <div className="flex flex-col">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Confidence
+          {t("pathfinder.pivot.confidence")}
         </span>
         <Badge
           variant="outline"
           className={`w-fit ${CONFIDENCE_STYLES[path.min_confidence_in_path]}`}
         >
-          {path.min_confidence_in_path}
+          {t(`confidence.${path.min_confidence_in_path}`)}
         </Badge>
       </div>
     </div>

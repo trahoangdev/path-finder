@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { CommandSearch, SearchTrigger } from "@/components/command-search"
+import { LanguageSwitcher } from "@/components/language-switcher"
 import { ModeToggle } from "@/components/mode-toggle"
 import { ThemeCustomizer } from "@/components/theme-customizer"
 
@@ -37,7 +38,8 @@ export function SiteHeader() {
           <div className="flex-1 max-w-sm">
             <SearchTrigger onClick={() => setSearchOpen(true)} />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <aside className="ml-auto flex items-center gap-2">
+            <LanguageSwitcher />
             <ModeToggle />
             <Button
               variant="outline"
@@ -49,7 +51,7 @@ export function SiteHeader() {
               <Settings className="h-[1.2rem] w-[1.2rem]" />
               <span className="sr-only">Customize theme</span>
             </Button>
-          </div>
+          </aside>
         </div>
       </header>
       <CommandSearch open={searchOpen} onOpenChange={setSearchOpen} />
@@ -60,3 +62,6 @@ export function SiteHeader() {
     </>
   )
 }
+
+
+

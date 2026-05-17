@@ -23,7 +23,18 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useTranslations } from "@/contexts/locale-context";
 import type { CoursePublic, CoursesForSkill } from "@/lib/pathfinder/types";
+import { AggregationPipelineBadges } from "./honest-mode";
+
+/** Stages in `server/src/services/vector-search/courses.ts`. */
+const COURSES_AGG_STAGES = [
+  "vectorSearch",
+  "addFields",
+  "sort",
+  "limit",
+  "project",
+] as const;
 
 interface CoursesCardProps {
   groups: CoursesForSkill[];
@@ -45,36 +56,33 @@ const LEVEL_STYLES: Record<CoursePublic["level"], string> = {
 };
 
 export function CoursesCard({ groups }: CoursesCardProps) {
+  const t = useTranslations();
   const nonEmpty = groups.filter((g) => g.courses.length > 0);
 
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Course recommendations</CardDescription>
+        <CardDescription>{t("pathfinder.courses.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <BookOpen className="size-4 text-primary" />
-          What to study, ordered by your gap
+          {t("pathfinder.courses.title")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          For each top missing skill we embed its description and ask Atlas
-          Vector Search for the courses whose description best matches —
-          pre-filtered to MongoDB-official, free, or ≤ $50.
+          {t("pathfinder.courses.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          className="pt-1"
+          stages={COURSES_AGG_STAGES}
+        />
       </CardHeader>
       <CardContent>
         {groups.length === 0 ? (
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            Run an analysis to see recommended courses for your top missing
-            skills.
+            {t("pathfinder.courses.runFirst")}
           </p>
         ) : nonEmpty.length === 0 ? (
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            The course catalog is sparse for these specific skills. Seed more
-            entries via{" "}
-            <code className="rounded bg-muted px-1 text-xs">
-              etl/04_load_courses.py
-            </code>
-            .
+            {t("pathfinder.courses.sparse")}
           </p>
         ) : (
           <div className="flex flex-col gap-3">
@@ -99,6 +107,7 @@ function SkillGroup({
   group: CoursesForSkill;
   defaultOpen: boolean;
 }) {
+  const t = useTranslations();
   const [open, setOpen] = React.useState(defaultOpen);
   const officialCount = group.courses.filter(
     (c) => c.is_mongodb_official,
@@ -113,19 +122,24 @@ function SkillGroup({
             <Tag className="size-3.5 text-muted-foreground" />
             <span className="truncate font-medium">{group.skill}</span>
             <Badge variant="outline" className="text-[10px]">
-              {group.courses.length} courses
+              {t("pathfinder.courses.courseCount", {
+                count: group.courses.length,
+              })}
             </Badge>
             {officialCount > 0 ? (
               <Badge
                 variant="outline"
                 className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px]"
               >
-                {officialCount} MongoDB official
+                {t("pathfinder.courses.mongoOfficial", {
+                  count: officialCount,
+                })}
               </Badge>
             ) : null}
             {freeCount > 0 ? (
               <Badge variant="secondary" className="gap-1 text-[10px]">
-                <Leaf className="size-3" /> {freeCount} free
+                <Leaf className="size-3" />{" "}
+                {t("pathfinder.courses.freeCount", { count: freeCount })}
               </Badge>
             ) : null}
           </div>
@@ -139,8 +153,7 @@ function SkillGroup({
           <ul className="grid gap-2 p-3 pt-0 sm:grid-cols-2">
             {group.courses.length === 0 ? (
               <li className="col-span-full rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                No course matched this skill — try seeding the catalog with
-                more entries.
+                {t("pathfinder.courses.noMatch")}
               </li>
             ) : (
               group.courses.map((c) => <CourseRow key={c.url} course={c} />)
@@ -153,6 +166,7 @@ function SkillGroup({
 }
 
 function CourseRow({ course }: { course: CoursePublic }) {
+  const t = useTranslations();
   return (
     <li className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -169,7 +183,7 @@ function CourseRow({ course }: { course: CoursePublic }) {
           target="_blank"
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-foreground"
-          aria-label="Open course"
+          aria-label={t("pathfinder.courses.openCourse")}
         >
           <ExternalLink className="size-3.5" />
         </a>
@@ -182,19 +196,19 @@ function CourseRow({ course }: { course: CoursePublic }) {
           variant="outline"
           className={`text-[10px] ${LEVEL_STYLES[course.level]}`}
         >
-          {course.level}
+          {t(`skillLevel.${course.level}`)}
         </Badge>
         {course.is_mongodb_official && (
           <Badge
             variant="outline"
             className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px]"
           >
-            MongoDB official
+            {t("pathfinder.courses.mongoBadge")}
           </Badge>
         )}
         {course.price_usd === 0 ? (
           <Badge variant="secondary" className="gap-1 text-[10px]">
-            <Leaf className="size-3" /> Free
+            <Leaf className="size-3" /> {t("pathfinder.courses.free")}
           </Badge>
         ) : (
           <span className="font-mono text-muted-foreground">

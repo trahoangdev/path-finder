@@ -98,6 +98,12 @@ def regular_indexes() -> None:
         [("from_skill", 1), ("to_skill", 1)], unique=True
     )
     db["skill_transitions"].create_index([("from_skill", 1), ("frequency", -1)])
+    db["skill_transitions"].create_index(
+        [("to_skill", 1), ("edge_kind", 1), ("frequency", -1)]
+    )
+
+    db["roadmap_edges"].create_index([("roadmap_slug", 1), ("source_node_id", 1)])
+    db["roadmap_edges"].create_index("roadmap_slug")
 
     db["users"].create_index("ttl_expires_at", expireAfterSeconds=0)
 

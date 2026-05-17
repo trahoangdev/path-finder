@@ -10,19 +10,24 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useTranslations } from "@/contexts/locale-context";
 import type { ProofDrawerResponse } from "@/lib/pathfinder/types";
 import {
+  AggregationPipelineBadges,
   DataSourceBadges,
   HONEST_THRESHOLDS,
   HonestModeBadge,
   InsufficientDataPlaceholder,
 } from "./honest-mode";
 
+const PROOF_AGG_STAGES = ["match", "facet", "group"] as const;
+
 interface ProofDrawerCardProps {
   data: ProofDrawerResponse;
 }
 
 export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
+  const t = useTranslations();
   const examples = data.example_profiles.slice(0, 4);
   // Honest Mode (F7.3): when N < 10, refuse to render speculative stats.
   const hide = data.sample_size < HONEST_THRESHOLDS.hide;
@@ -30,47 +35,48 @@ export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Proof drawer</CardDescription>
+        <CardDescription>{t("pathfinder.proof.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <ScrollText className="size-4 text-primary" />
-          “Has anyone actually pulled this off?” — yes, here&apos;s the evidence
+          {t("pathfinder.proof.title")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          A single MongoDB{" "}
-          <code className="rounded bg-muted px-1 text-xs">$facet</code> over
-          career trajectories returns sample size, conversion rate, salary
-          stats, and 3–4 example pivoters in one round-trip.
+          {t("pathfinder.proof.subtitle")}
         </p>
+        <AggregationPipelineBadges stages={PROOF_AGG_STAGES} className="pt-1" />
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {hide ? (
           <InsufficientDataPlaceholder
             n={data.sample_size}
-            description="The trajectory cohort that matches your start → target combo is too small to produce a trustworthy conversion rate or salary lift. Re-run with a closer target or seed more rows via the ETL."
+            description={t("pathfinder.proof.insufficientDescription")}
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat
-              label="Sample size"
+              label={t("pathfinder.proof.sampleSize")}
               value={data.sample_size.toLocaleString()}
-              hint="similar pivots in data"
+              hint={t("pathfinder.proof.sampleHint")}
             />
             <Stat
-              label="Conversion rate"
+              label={t("pathfinder.proof.conversionRate")}
               value={`${(data.conversion_rate * 100).toFixed(1)}%`}
               accent
-              hint="completed the pivot"
+              hint={t("pathfinder.proof.conversionHint")}
             />
             <Stat
-              label="Median salary lift"
+              label={t("pathfinder.proof.medianLift")}
               value={`+${Math.round(data.salary_stats.median_lift_pct)}%`}
               accent
-              hint={`spread ${Math.round(data.salary_stats.min_lift_pct)}…+${Math.round(data.salary_stats.max_lift_pct)}%`}
+              hint={t("pathfinder.proof.spreadHint", {
+                min: Math.round(data.salary_stats.min_lift_pct),
+                max: Math.round(data.salary_stats.max_lift_pct),
+              })}
             />
             <Stat
-              label="Avg duration"
+              label={t("pathfinder.proof.avgDuration")}
               value={`${Math.round(data.salary_stats.avg_months)} mo`}
-              hint="time-to-target role"
+              hint={t("pathfinder.proof.durationHint")}
             />
           </div>
         )}
@@ -86,12 +92,12 @@ export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Users className="size-4 text-muted-foreground" />
-              Sample pivoters in the data
+              {t("pathfinder.proof.samplePivoters")}
             </div>
             <ul className="grid gap-2 sm:grid-cols-2">
               {examples.length === 0 ? (
                 <li className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                  No example trajectories surfaced.
+                  {t("pathfinder.proof.noExamples")}
                 </li>
               ) : (
                 examples.map((ex) => (
@@ -108,7 +114,7 @@ export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
                       </Badge>
                     </div>
                     <p className="mt-1 font-medium">
-                      {ex.starting_role ?? "Unknown"}{" "}
+                      {ex.starting_role ?? t("common.unknown")}{" "}
                       <span className="text-muted-foreground">→</span>{" "}
                       <span className="text-primary">{ex.current_role}</span>
                     </p>
@@ -118,7 +124,11 @@ export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
                         {ex.ed_level ?? "—"}
                       </span>
                       <span>·</span>
-                      <span>{ex.total_years_exp} yrs total</span>
+                      <span>
+                        {t("pathfinder.proof.yrsTotal", {
+                          years: ex.total_years_exp,
+                        })}
+                      </span>
                     </p>
                   </li>
                 ))

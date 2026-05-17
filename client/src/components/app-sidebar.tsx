@@ -4,6 +4,7 @@ import * as React from "react"
 import { Compass } from "lucide-react"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
+import { useTranslations } from "@/contexts/locale-context"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -17,27 +18,29 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-const data = {
-  user: {
-    name: "PathFinder",
-    email: "demo@pathfinder.vn",
-    avatar: "",
-  },
-  navGroups: [
-    {
-      label: "PathFinder",
-      items: [
-        {
-          title: "Career Pivot",
-          url: "/pathfinder",
-          icon: Compass,
-        },
-      ],
-    },
-  ],
-}
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const t = useTranslations()
+
+  const data = {
+    user: {
+      name: t("common.pathfinder"),
+      email: "demo@pathfinder.vn",
+      avatar: "",
+    },
+    navGroups: [
+      {
+        label: t("nav.pathfinderGroup"),
+        items: [
+          {
+            title: t("common.careerPivot"),
+            url: "/pathfinder",
+            icon: Compass,
+          },
+        ],
+      },
+    ],
+  }
+
   return (
     <Sidebar {...props}>
       <SidebarHeader>
@@ -49,8 +52,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <Logo size={24} className="text-current" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">PathFinder</span>
-                  <span className="truncate text-xs">Career Pivot Engine</span>
+                  <span className="truncate font-medium">
+                    {t("common.pathfinder")}
+                  </span>
+                  <span className="truncate text-xs">
+                    {t("common.careerPivotEngine")}
+                  </span>
                 </div>
               </Link>
             </SidebarMenuButton>
@@ -68,3 +75,4 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     </Sidebar>
   )
 }
+

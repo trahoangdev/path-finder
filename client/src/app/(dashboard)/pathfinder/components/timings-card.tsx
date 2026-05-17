@@ -8,51 +8,56 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useTranslations } from "@/contexts/locale-context";
 import type { AnalyzeResponse } from "@/lib/pathfinder/types";
 
 interface TimingsCardProps {
   timings: AnalyzeResponse["timings_ms"];
 }
 
-const STAGES: Array<{ key: keyof AnalyzeResponse["timings_ms"]; label: string }> = [
-  { key: "extract", label: "extract skills" },
-  { key: "embed", label: "embed" },
-  { key: "gap", label: "gap analysis" },
-  { key: "paths", label: "pivot paths" },
-  { key: "proof", label: "proof drawer" },
-  { key: "similar", label: "similar devs" },
-  { key: "courses", label: "course matching" },
-  { key: "salary", label: "salary band" },
-];
+const STAGE_KEYS = [
+  "extract",
+  "embed",
+  "gap",
+  "paths",
+  "proof",
+  "similar",
+  "courses",
+  "salary",
+] as const satisfies ReadonlyArray<keyof AnalyzeResponse["timings_ms"]>;
 
 export function TimingsCard({ timings }: TimingsCardProps) {
-  const max = STAGES.reduce(
-    (m, stage) => Math.max(m, timings[stage.key] ?? 0),
+  const t = useTranslations();
+  const max = STAGE_KEYS.reduce(
+    (m, key) => Math.max(m, timings[key] ?? 0),
     1,
   );
 
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Pipeline timings</CardDescription>
+        <CardDescription>{t("pathfinder.timings.description")}</CardDescription>
         <CardTitle className="flex items-center gap-2 text-base">
           <Timer className="size-4 text-primary" />
-          Total {timings.total.toLocaleString()} ms server-side
+          {t("pathfinder.timings.title", {
+            total: timings.total.toLocaleString(),
+          })}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Per-stage latency. Gap, paths, proof and similar devs run in
-          parallel.
+          {t("pathfinder.timings.subtitle")}
         </p>
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col gap-2">
-          {STAGES.map((stage) => {
-            const value = timings[stage.key] ?? 0;
+          {STAGE_KEYS.map((key) => {
+            const value = timings[key] ?? 0;
             const width = Math.max(2, Math.round((value / max) * 100));
             return (
-              <li key={stage.key} className="flex flex-col gap-1">
+              <li key={key} className="flex flex-col gap-1">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="capitalize">{stage.label}</span>
+                  <span className="capitalize">
+                    {t(`pathfinder.timings.${key}`)}
+                  </span>
                   <span className="font-mono tabular-nums text-muted-foreground">
                     {value} ms
                   </span>

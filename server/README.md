@@ -2,7 +2,7 @@
 
 Backend REST API cho PathFinder, built với **Hono + TypeScript + MongoDB Atlas**.
 
-> *Career Pivot Engine for Vietnamese Developers — Powered by 3,000+ real dev trajectories. No hallucinations.*
+> *Career Pivot Engine for Vietnamese Developers — Powered by 3,000+ calibrated synthetic trajectories plus curated VN market data.*
 
 ---
 
@@ -93,7 +93,6 @@ server/
 │   ├── middleware/              # CORS, error, logger, etc.
 │   └── lib/                     # Shared utils (logger, errors)
 ├── etl/                         # Python offline scripts
-├── tests/                       # Vitest
 └── ...
 ```
 

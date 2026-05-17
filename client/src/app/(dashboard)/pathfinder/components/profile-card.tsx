@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "@/contexts/locale-context";
 import type { ExtractedProfile, UserSkill } from "@/lib/pathfinder/types";
 
 interface ProfileCardProps {
@@ -25,14 +26,15 @@ const LEVEL_STYLES: Record<UserSkill["level"], string> = {
 };
 
 export function ProfileCard({ profile, targetRole }: ProfileCardProps) {
+  const t = useTranslations();
   const skills = [...profile.skills].sort((a, b) => b.years - a.years);
 
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardDescription>Candidate profile</CardDescription>
+        <CardDescription>{t("pathfinder.profile.description")}</CardDescription>
         <CardTitle className="text-xl @[280px]/card:text-2xl">
-          {profile.inferred_role ?? "Unknown role"}
+          {profile.inferred_role ?? t("pathfinder.profile.unknownRole")}
           <span className="text-muted-foreground"> → </span>
           <span className="text-primary">{targetRole}</span>
         </CardTitle>
@@ -44,12 +46,14 @@ export function ProfileCard({ profile, targetRole }: ProfileCardProps) {
           <span className="text-muted-foreground/40">·</span>
           <span className="inline-flex items-center gap-1">
             <Clock className="size-3.5" />
-            {profile.inferred_years ?? "?"} yrs experience
+            {t("pathfinder.profile.yrsExperience", {
+              years: profile.inferred_years ?? "?",
+            })}
           </span>
           <span className="text-muted-foreground/40">·</span>
           <span className="inline-flex items-center gap-1">
             <TrendingUp className="size-3.5" />
-            {skills.length} skills extracted
+            {t("pathfinder.profile.skillsExtracted", { count: skills.length })}
           </span>
         </div>
       </CardHeader>
@@ -64,13 +68,13 @@ export function ProfileCard({ profile, targetRole }: ProfileCardProps) {
             >
               <span className="font-medium">{skill.name}</span>
               <span className="text-[10px] uppercase tracking-wider opacity-70">
-                {skill.level}
+                {t(`skillLevel.${skill.level}`)}
               </span>
             </Badge>
           ))}
           {skills.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No skills extracted — try a longer CV.
+              {t("pathfinder.profile.noSkills")}
             </p>
           )}
         </div>

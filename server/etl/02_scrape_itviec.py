@@ -22,15 +22,26 @@ Salary scale notes (VND, millions/month — typical ITViec format):
 The static sample is sufficient to demonstrate the hybrid Vector Search
 (filter by level + location + salary_min, then re-rank by embedding) story
 for the hackathon judge video.
+
+On insert, any legacy ``source_url`` matching ``https://itviec.com/jobs/...``
+(is illustrative only — ITViec returns 404) is rewritten to a real search URL:
+``https://itviec.com/it-jobs?q=<title+company+skill>``.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from _common import DATA_DIR, get_db, log
+
+# Historic seed used illustrative paths like /jobs/ml-engineer-fpt — those are
+# NOT valid on itviec.com (real listings live under /it-jobs/...). We rewrite
+# any itviec.com/jobs/... URL on insert to a working search URL.
+_FAKE_ITVIEC_JOB_PATH = re.compile(r"^https?://itviec\.com/jobs/", re.IGNORECASE)
 
 
 def _posted(days_ago: int) -> str:
@@ -364,9 +375,36 @@ def load() -> list[dict]:
     return CURATED_SAMPLE
 
 
+def _itviec_search_url(doc: dict) -> str:
+    """Stable, real URL: ITviec job search from title + company + top skill."""
+    skills: list = doc.get("required_skills") or []
+    skill0 = skills[0] if skills else ""
+    parts = [skill0, doc.get("title") or "", doc.get("company") or ""]
+    q = quote_plus(" ".join(p for p in parts if p).strip())
+    return f"https://itviec.com/it-jobs?q={q}"
+
+
+def _fix_fake_itviec_urls(docs: list[dict]) -> int:
+    """Rewrite legacy seed URLs /jobs/... (404) → /it-jobs?q=... (live search)."""
+    n = 0
+    for d in docs:
+        url = d.get("source_url")
+        if d.get("source") != "itviec" or not isinstance(url, str):
+            continue
+        if not _FAKE_ITVIEC_JOB_PATH.match(url.strip()):
+            continue
+        d["source_url"] = _itviec_search_url(d)
+        n += 1
+    return n
+
+
 def insert(docs: list[dict]) -> None:
     db = get_db()
     now = datetime.now(timezone.utc)
+    fixed = _fix_fake_itviec_urls(docs)
+    if fixed:
+        log.info("Rewrote %d fake itviec.com/jobs/ URLs → it-jobs search links", fixed)
+
     for d in docs:
         if isinstance(d.get("posted_at"), str):
             d["posted_at"] = datetime.fromisoformat(d["posted_at"].replace("Z", "+00:00"))

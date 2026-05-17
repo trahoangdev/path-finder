@@ -6,3 +6,4 @@ export * from './course.js';
 export * from './trajectory.js';
 export * from './transition.js';
 export * from './api.js';
+export * from './roadmap.js';
