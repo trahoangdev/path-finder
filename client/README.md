@@ -1,165 +1,105 @@
-# Pathfinder — Next.js Client
+# PathFinder - Client
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-
-![Dashboard Preview](public/dashboard.png)
-
-Modern admin dashboard + landing page client built with **Next.js 16**, **React 19**, **TypeScript**, **shadcn/ui v3** và **Tailwind CSS v4**. Đã được tinh gọn, chỉ còn Next.js (bản Vite đã được loại bỏ).
+Frontend dashboard cho PathFinder, built với **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS 4** và **shadcn/ui**.
 
 ---
 
-## ✨ Tech Stack
+## Chức năng chính
 
-- **Next.js 16** — App Router, server components
-- **React 19** — Concurrent features
-- **TypeScript** — Full type safety
-- **shadcn/ui v3** + **Radix UI** — Component library
-- **Tailwind CSS v4** — Utility-first styling
-- **tweakcn** — Theme customization
-- **Lucide React** — Icons
-- **Zustand** — State management
-- **React Hook Form** + **Zod** — Forms & validation
-- **TanStack Table** — Data tables
-- **Recharts** — Charts
+- Form nhập CV dạng text
+- 3 demo personas để chạy nhanh luồng phân tích
+- Chọn target role bằng input tự do hoặc preset
+- Hiển thị:
+  - profile đã extract
+  - gap analysis
+  - pivot paths
+  - trajectory graph
+  - proof drawer
+  - similar developers
+  - salary band
+  - course recommendations
+  - timings
+- Hỗ trợ giao diện đa ngôn ngữ `vi/en`
+- Honest Mode để ẩn/cảnh báo recommendation khi sample size thấp
 
 ---
 
-## 🚀 Quick Start
+## Stack
 
-### Prerequisites
+| Layer | Tech |
+|---|---|
+| Framework | Next.js 16 |
+| Runtime UI | React 19 |
+| Styling | Tailwind CSS 4 + shadcn/ui |
+| Graph | `@xyflow/react` |
+| Charts | `recharts` |
+| Icons | `lucide-react` |
+| State / form helpers | `zustand`, `react-hook-form`, `zod` |
 
-- **Node.js** 18+
-- **pnpm** (recommended), npm hoặc yarn
+---
 
-### Install & Run
+## Chạy local
 
 ```bash
 cd client
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
-Truy cập tại: <http://localhost:3000>
+Mặc định app chạy tại:
+
+- `http://localhost:3000`
+- màn hình chính của sản phẩm: `http://localhost:3000/pathfinder`
+
+Tạo file `.env.local` nếu backend không ở URL mặc định:
+
+```env
+NEXT_PUBLIC_PATHFINDER_API_URL=http://localhost:4000
+```
+
+Nếu không khai báo biến này, client tự fallback về `http://localhost:4000`.
 
 ---
 
-## 🛠️ Scripts
-
-```bash
-pnpm dev      # Start dev server (Next.js)
-pnpm build    # Production build
-pnpm start    # Run production server
-pnpm lint     # Lint với eslint-config-next
-```
-
----
-
-## 🏗️ Project Structure
+## Cấu trúc chính
 
 ```text
-📁 client/
-├── 📁 public/                    # Static assets
-├── 📁 src/
-│   ├── 📁 app/                   # Next.js App Router
-│   │   ├── 📁 (auth)/            # Auth route group
-│   │   │   ├── login/
-│   │   │   ├── signup/
-│   │   │   ├── forgot-password/
-│   │   │   └── errors/
-│   │   ├── 📁 (dashboard)/       # Dashboard route group
-│   │   │   ├── dashboard/
-│   │   │   ├── dashboard-2/
-│   │   │   ├── mail/
-│   │   │   ├── tasks/
-│   │   │   ├── chat/
-│   │   │   ├── calendar/
-│   │   │   ├── settings/
-│   │   │   ├── users/
-│   │   │   ├── faqs/
-│   │   │   └── pricing/
-│   │   ├── 📁 landing/           # Landing page
-│   │   ├── layout.tsx
-│   │   ├── loading.tsx
-│   │   ├── not-found.tsx
-│   │   └── page.tsx
-│   ├── 📁 components/            # UI & layout components
-│   │   ├── ui/                   # shadcn/ui v3
-│   │   ├── layouts/
-│   │   └── theme-customizer/
-│   ├── 📁 hooks/
-│   ├── 📁 lib/
-│   └── 📁 types/
-├── 📁 docs/                      # VitePress documentation site
-├── components.json               # shadcn/ui config
-├── next.config.ts
-├── tsconfig.json
-├── eslint.config.mjs
-├── postcss.config.mjs
-└── package.json
+client/
+├── src/
+│   ├── app/(dashboard)/pathfinder/
+│   │   ├── page.tsx
+│   │   ├── sample-cv.ts
+│   │   └── components/
+│   ├── components/
+│   ├── contexts/
+│   ├── i18n/
+│   └── lib/pathfinder/
+├── public/
+├── package.json
+└── next.config.ts
 ```
 
----
+Các file nên đọc trước:
 
-## 🎨 Theme Customization
-
-Built-in **live theme customizer** (powered by tweakcn) cho phép đổi màu, layout sidebar, dark/light mode trực tiếp trong app.
-
-### Themes có sẵn
-
-- 🌊 Default · 🌙 Dark · 🌸 Rose · 🌿 Green · 🌅 Orange · 🔴 Red · 💜 Violet
-
-### Custom CSS variables (`globals.css`)
-
-```css
-:root {
-  --primary: oklch(0.5 0.2 240);
-  --primary-foreground: oklch(0.98 0.02 240);
-}
-
-.dark {
-  --primary: oklch(0.7 0.2 240);
-  --primary-foreground: oklch(0.15 0.02 240);
-}
-```
-
-### Gỡ bỏ Theme Customizer
-
-1. Xoá `src/components/theme-customizer.tsx`
-2. Xoá nút mở customizer khỏi `src/app/layout.tsx`
-3. Xoá thư mục `src/components/theme-customizer/` (nếu có)
-
-Tham khảo thêm: [shadcn/ui theming guide](https://ui.shadcn.com/docs/theming).
+- `src/app/(dashboard)/pathfinder/components/pathfinder-analyzer.tsx`
+- `src/app/(dashboard)/pathfinder/components/analysis-results.tsx`
+- `src/app/(dashboard)/pathfinder/components/trajectory-graph-card.tsx`
+- `src/app/(dashboard)/pathfinder/components/honest-mode.tsx`
+- `src/lib/pathfinder/api.ts`
 
 ---
 
-## 📋 Bao gồm
+## Scripts
 
-### Dashboard
-- 2 dashboard variants (Overview & Analytics)
-- Mail, Tasks, Chat, Calendar, Users apps
-- 30+ pages: Auth, Settings, Errors, FAQ, Pricing
-- Advanced data tables (sort/filter/pagination)
-- Charts (Recharts)
-
-### Authentication
-- Login (3 variants), Sign Up (3 variants), Forgot Password (3 variants)
-
-### Settings & Profile
-- Account, Appearance, Notifications, Connections, Plans & Billing
-
-### Error Pages
-- 401, 403, 404, 500, Maintenance
-
-### Landing Page
-- Hero, About, Features, Stats, Logo carousel, Team, Testimonials, Blog, Pricing, FAQ, Contact, CTA, Nav & Footer
+| Command | Mục đích |
+|---|---|
+| `npm run dev` | Chạy dev server |
+| `npm run build` | Build production |
+| `npm start` | Chạy production server |
+| `npm run lint` | Lint |
 
 ---
 
-## 📄 License
+## Ghi chú
 
-MIT — xem [License.md](./License.md).
-
-Template gốc: [shadcn-dashboard-landing-template](https://github.com/silicondeck/shadcn-dashboard-landing-template) bởi [ShadcnStore](https://shadcnstore.com).
+Client chỉ giữ state phía browser và gọi REST API từ `server/`; toàn bộ recommendation logic nằm ở backend.

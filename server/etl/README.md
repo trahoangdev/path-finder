@@ -33,7 +33,7 @@ export OPENAI_API_KEY="sk-..."
 | 4 | `04_load_courses.py` | Load ~30 curated courses (MongoDB University + Coursera/Udemy/freeCodeCamp) → `courses` | ~2 s |
 | 5 | `05_embed_all.py` | Generate 768-d vectors (`text-embedding-3-small` w/ `dimensions=768`; falls back to deterministic hash if quota / rate-limit hit) | ~2–30 min |
 | 6 | `06_create_indexes.py` | Create regular indexes + Atlas Vector Search indexes | ~1-2 min |
-| 7 | `07_compute_transitions.py` | Pre-compute `skill_transitions` via aggregation `$out` | ~5 s |
+| 7 | `07_compute_transitions.py` | Pre-compute traversable `skill_transitions` graph (`role -> skill -> skill -> role`) via aggregation `$out` | ~5 s |
 
 Run all sequentially:
 

@@ -1,1499 +1,914 @@
-# PathFinder — Tài liệu Kỹ thuật
+# PathFinder - Tài liệu Kỹ thuật
 
-> *Career Pivot Engine for Vietnamese Developers — Powered by 3,000+ real dev trajectories. No hallucinations.*
+> Career Pivot Engine cho developer Việt Nam, được xây trên MongoDB Atlas Vector Search, Aggregation Pipeline và OpenAI.
 
 | | |
 |---|---|
+| **Dự án** | PathFinder |
 | **Đội thi** | 100M Builder |
-| **Thành viên** | Hoàng Trọng Trà |
-| **Cuộc thi** | MUGVN × MongoDB Mini Hackathon 2026 |
-| **Phiên bản tài liệu** | 1.1 (post-implementation) |
-| **Ngày nộp** | 31/05/2026 |
-| **Repository** | https://github.com/trahoangdev/path-finder *(public sau 31/05)* |
-| **Live demo** | https://pathfinder-vn.vercel.app *(điền khi deploy)* |
-| **Video demo (≤10 min)** | https://youtu.be/xxxxxxxxx *(điền khi nộp)* |
+| **Tác giả** | Hoàng Trọng Trà |
+| **Cuộc thi** | MUGVN x MongoDB Mini Hackathon 2026 |
+| **Phiên bản tài liệu** | 2.0 - implementation snapshot |
+| **Cập nhật gần nhất** | 17/05/2026 |
+| **Trạng thái code** | MVP đã có luồng end-to-end `CV -> analyze -> dashboard` |
+| **Kiến trúc** | Monorepo 2 service: `client/` + `server/` |
 
 ---
 
 ## Mục lục
 
-1. [Tóm tắt giải pháp](#1-tóm-tắt-giải-pháp)
-2. [MVP & Kiến trúc Hệ thống Tổng thể](#2-mvp--kiến-trúc-hệ-thống-tổng-thể)
-3. [Data Schema & Kiến trúc Dữ liệu MongoDB](#3-data-schema--kiến-trúc-dữ-liệu-mongodb)
-4. [Vector Search & Aggregation Pipeline — Cách Áp dụng](#4-vector-search--aggregation-pipeline--cách-áp-dụng)
-5. [Hiệu năng & Khả năng mở rộng](#5-hiệu-năng--khả-năng-mở-rộng)
-6. [Sample Data](#6-sample-data)
-7. [Phụ lục](#7-phụ-lục)
+1. [Tổng quan giải pháp](#1-tổng-quan-giải-pháp)
+2. [Kiến trúc hệ thống](#2-kiến-trúc-hệ-thống)
+3. [Luồng runtime](#3-luồng-runtime)
+4. [Thiết kế dữ liệu MongoDB](#4-thiết-kế-dữ-liệu-mongodb)
+5. [Vector Search và Aggregation Pipeline](#5-vector-search-và-aggregation-pipeline)
+6. [API contract](#6-api-contract)
+7. [Frontend implementation](#7-frontend-implementation)
+8. [ETL, index và reproducibility](#8-etl-index-và-reproducibility)
+9. [Hiệu năng, độ tin cậy và giới hạn hiện tại](#9-hiệu-năng-độ-tin-cậy-và-giới-hạn-hiện-tại)
+10. [ADR và quyết định kỹ thuật](#10-adr-và-quyết-định-kỹ-thuật)
+11. [Cấu trúc repository](#11-cấu-trúc-repository)
+12. [Phụ lục](#12-phụ-lục)
 
 ---
 
-## 1. Tóm tắt giải pháp
+## 1. Tổng quan giải pháp
 
 ### 1.1 Bài toán
 
-Hơn **200,000 developer Việt Nam** tuổi 25–35 đang khủng hoảng nghề nghiệp giữa làn sóng AI 2026: Copilot/Cursor thay thế junior code work, các công ty tech VN chuyển hướng tuyển AI/ML, nhưng dev không biết **học gì → mất bao lâu → khả năng thành công bao nhiêu**.
+PathFinder trả lời ba câu hỏi chính cho developer muốn đổi hướng nghề nghiệp:
 
-Hai công cụ hiện tại đều thiếu sót:
-- **roadmap.sh**: static, không cá nhân hoá, không có data salary VN.
-- **ChatGPT**: hallucinate, không verifiable, không có dữ liệu trajectory thật.
+| Câu hỏi | Câu trả lời của hệ thống | Kỹ thuật chính |
+|---|---|---|
+| Tôi còn thiếu skill gì để vào role mục tiêu? | Xếp hạng kỹ năng còn thiếu dựa trên evidence và semantic similarity | Atlas Vector Search + `$lookup` |
+| Tôi nên học theo lộ trình nào? | Sinh tối đa 3 path: `fast`, `balanced`, `comprehensive` | `$graphLookup` trên graph `role -> skill -> skill -> role` |
+| Có bằng chứng nào cho recommendation này không? | Hiển thị sample size, conversion, salary lift và profile ví dụ | `$facet` trên `career_trajectories` |
 
-### 1.2 Giải pháp PathFinder
+### 1.2 Điểm khác biệt
 
-Một **AI Career Coach** dành riêng cho dev VN muốn pivot stack. Mọi gợi ý đều dựa trên **3,000+ trajectory** được mô phỏng có cân chỉnh (synthetic, calibrated theo SEA market patterns), kết hợp **20+ JD VN** curated (mở rộng được qua ITViec scrape). Schema giữ field `source` để có thể swap sang real SO Survey / crowdsourced data sau hackathon.
+- Recommendation không chỉ là text từ LLM. LLM chỉ dùng để trích skill từ CV.
+- Recommendation chính đi qua MongoDB, với dữ liệu có provenance rõ ràng.
+- UI có **Honest Mode**:
+  - `N >= 30`: hiển thị như recommendation đáng tin.
+  - `10 <= N < 30`: hiển thị cảnh báo low confidence.
+  - `N < 10`: ẩn card và thay bằng placeholder "not enough data".
+- Tài liệu và UI luôn phân biệt dữ liệu:
+  - `synthetic_vn` cho trajectory cohort mô phỏng có cân chỉnh.
+  - `itviec_sample` cho job salary sample.
+  - `roadmap.sh`, `skill_transitions`, `learn.mongodb.com` cho các nguồn phụ trợ.
 
-3 năng lực cốt lõi:
+### 1.3 Phạm vi MVP đang có trong code
 
-| Năng lực | Câu hỏi user trả lời | Kỹ thuật MongoDB |
-|----------|----------------------|-------------------|
-| **Gap Analysis** | *"Tôi đang thiếu skill gì để vào target role?"* | **Vector Search** |
-| **Pivot Path Discovery** | *"Skill nào học trước, skill nào học sau, mất bao lâu?"* | **Aggregation** (`$match`/`$sort` on `skill_transitions`; optional `$graphLookup`) |
-| **Proof & Salary** | *"Bao nhiêu người giống tôi đã làm được? Lương lên bao nhiêu?"* | **Aggregation (`$group`, `$facet`)** |
-
-### 1.3 Differentiator chính
-
-> **Proof Drawer** — Mỗi gợi ý có nút expand “Why?” show:
-> *"Based on N=89 devs trong calibrated SEA cohort với background tương tự, 75% đã đạt target role trong 18 tháng, median salary lift +28%."*
->
-> ChatGPT không có. roadmap.sh không có. Chỉ MongoDB + real data có.
+| Nhóm | Trạng thái |
+|---|---|
+| Paste CV và chọn target role | Đã có |
+| 3 demo persona | Đã có |
+| LLM skill extraction | Đã có |
+| Gap analysis | Đã có |
+| Pivot path recommendation | Đã có |
+| Trajectory graph | Đã có |
+| Proof drawer | Đã có |
+| Similar developers | Đã có |
+| VN salary band | Đã có |
+| Course recommendation | Đã có |
+| Honest Mode | Đã có |
+| User account / persistence | Chưa triển khai |
 
 ---
 
-## 2. MVP & Kiến trúc Hệ thống Tổng thể
+## 2. Kiến trúc hệ thống
 
-### 2.1 Phạm vi MVP
+### 2.1 Stack hiện tại
 
-| ID | Tính năng | Mô tả ngắn |
-|----|-----------|------------|
-| F1 | CV Input + Skill Extraction | Paste CV → LLM extract structured skills |
-| F2 | Target Role Selection | 12 preset roles + custom |
-| F3 | **Gap Analysis** | Vector Search: thiếu skill nào để vào target |
-| F4 | **Pivot Path Recommendation** | 3 paths Fast/Balanced/Comprehensive (`skill_transitions` + optional `$graphLookup`) |
-| F5 | **Trajectory Graph** | `@xyflow/react` visualization (3 flavor swimlanes, pan/zoom/minimap) |
-| F6 | **Proof Drawer** | Evidence card cho từng recommendation |
-| F7 | VN Salary Band | Hiển thị salary range theo ITViec data |
-| F8 | Course Recommendation | Vector match course → missing skill |
-| F9 | Honest Mode | Confidence indicator + warning khi N thấp |
+| Layer | Công nghệ thực tế trong repo |
+|---|---|
+| Frontend | Next.js `16.1.1`, React `19.2.3`, TypeScript, Tailwind CSS 4, shadcn/ui |
+| Graph UI | `@xyflow/react` `12.10.2` |
+| Backend | Hono `4.12.x`, Node.js `>=20.12`, TypeScript |
+| Validation + OpenAPI | Zod 4 + `@hono/zod-openapi` + `@hono/swagger-ui` |
+| Database | MongoDB Atlas |
+| AI | OpenAI `gpt-4o-mini` + `text-embedding-3-small` |
+| Embedding shape | 768 chiều bằng tham số `dimensions=768` |
+| ETL | Python 3.11 + `pymongo` |
+| Logging | `pino` |
 
-### 2.2 Kiến trúc tổng thể (2-service)
+### 2.2 Kiến trúc service
 
 ```mermaid
-flowchart TB
-    subgraph "User Layer"
-        U[Developer User<br/>Browser]
+flowchart LR
+    U["Developer user"] --> FE["client/\nNext.js 16 dashboard\n/pathfinder"]
+    FE --> API["server/\nHono REST API\n/api/*"]
+    API --> OAI["OpenAI\nLLM + embeddings"]
+    API --> MDB["MongoDB Atlas"]
+    ETL["server/etl/\nPython offline pipeline"] --> MDB
+
+    subgraph Runtime["Runtime"]
+      FE
+      API
+      OAI
+      MDB
     end
-
-    subgraph "Client — Next.js 14 (Port 3000)"
-        FE[App Router · shadcn/ui<br/>@xyflow/react · recharts<br/>UI only]
-    end
-
-    subgraph "Server — Hono REST API (Port 4000)"
-        RT[Routes<br/>/analyze · /pivot-paths · /proof-drawer<br/>/salary-band · /similar-devs · ...]
-        SVC[Services<br/>aggregations · vector-search · openai]
-        MW[Middleware<br/>CORS · error · logger · ratelimit]
-        DOC[/docs Swagger UI<br/>OpenAPI 3.1/]
-        RT --- SVC
-        RT --- MW
-        RT --- DOC
-    end
-
-    subgraph "AI Services"
-        G_EMB[OpenAI text-embedding-3-small<br/>768-dim (Matryoshka)]
-        G_LLM[OpenAI gpt-4o-mini<br/>Skill Extraction · JSON mode]
-    end
-
-    subgraph "MongoDB Atlas M0"
-        DB[(Collections<br/>jobs · skills · courses<br/>career_trajectories<br/>skill_transitions)]
-        VS{{Atlas Vector Search<br/>Indexes: vec_skills · vec_courses<br/>768-dim cosine (Matryoshka)}}
-        AGG{{Aggregation Engine<br/>graphLookup · group · facet}}
-        DB --- VS
-        DB --- AGG
-    end
-
-    subgraph "Offline ETL (Python)"
-        SO[Synthetic Trajectories<br/>seed=42<br/>~3,000 SEA devs]
-        ITV[Curated VN JDs<br/>20 listings<br/>extensible via scrape]
-        RM[roadmap.sh JSON<br/>Skill Taxonomy]
-        SYN[LLM Synthetic<br/>VN Personas]
-        ETL[Python ETL Scripts<br/>pandas + pymongo]
-        SO --> ETL
-        ITV --> ETL
-        RM --> ETL
-        SYN --> ETL
-    end
-
-    U -->|HTTPS| FE
-    FE -->|REST + CORS| RT
-    SVC -->|MongoDB Driver v6| DB
-    SVC -->|HTTPS| G_EMB
-    SVC -->|HTTPS| G_LLM
-    ETL -->|Bulk Insert<br/>+ Embed| DB
-
-    style VS fill:#00684A,color:#fff
-    style AGG fill:#00684A,color:#fff
-    style DB fill:#13AA52,color:#fff
-    style RT fill:#FF6900,color:#fff
-    style FE fill:#000,color:#fff
 ```
 
-### 2.3 Các thành phần chính
+### 2.3 Backend runtime
 
-| Component | Công nghệ | Trách nhiệm | Lý do chọn |
-|-----------|-----------|-------------|-------------|
-| **Client** | Next.js 14 + TypeScript + Tailwind + shadcn/ui (new-york) | UI/UX, render dashboard | Tách rõ trách nhiệm với backend |
-| **Server framework** | **Hono** + TypeScript (Node 20) | REST API endpoints, orchestrate logic | TS-first, ~14KB, OpenAPI built-in, deploy edge-anywhere |
-| **API validation** | Zod + `@hono/zod-openapi` | Schema validation + auto-gen OpenAPI 3.1 | 1 source of truth: schema → types → docs → validation |
-| **API docs** | `@hono/swagger-ui` mount tại `/docs` | Swagger UI tự sinh từ Zod schema | Judges mở 1 link thấy đầy đủ API spec |
-| **Database** | MongoDB Atlas M0 (free tier) | Lưu data, chạy Vector Search + Aggregation | **Yêu cầu cốt lõi cuộc thi** + Vector Search GA |
-| **Mongo driver** | `mongodb` official Node driver v6 | Type-safe, Vector Search support | Official, async, connection pooling |
-| **Embedding** | OpenAI `text-embedding-3-small` (768-dim via Matryoshka `dimensions=768`) | Vector embedding CV/JD/skill | Token-cheap (~$0.02 / 1M tok), strong cross-lingual VI↔EN, truncated 768-dim giữ index size nhỏ |
-| **LLM** | OpenAI `gpt-4o-mini` | Extract structured skills từ CV text | JSON mode native, latency p50 ~700ms, $0.15 / 1M input tok |
-| **Graph Viz** | **`@xyflow/react` 12.10** | Trajectory graph theo 3 flavor (Fast / Balanced / Comprehensive), pan & zoom, mini-map | Industry standard cho node-graph UI, MIT license, custom node + edge types để vẽ swimlane theo flavor, edge label HTML qua `<EdgeLabelRenderer>` |
-| **Logger** | pino + pino-pretty | Structured log JSON | Fast, prod-ready |
-| **ETL Layer** | Python 3.11 + pandas + pymongo | Offline data ingestion | Industry standard for data work |
-| **Scraping** | Playwright (Python) | ITViec JD scraping | Headless browser, anti-bot tốt |
-| **Hosting client** | Vercel (free tier) | Deploy Next.js | 1-click Next.js, custom domain free |
-| **Hosting server** | Railway / Render / Fly.io (free) | Deploy Hono Node app | Native Node 20, env vars, log streaming |
-| **Monitoring** | Atlas Charts + service-native logs | Track usage, query perf | Built-in, free |
+Entry point: `server/src/index.ts`
 
-### 2.4 Data flow runtime (1 lần user query)
+Global middleware đang dùng:
+
+- `requestId`
+- `timing`
+- `secureHeaders`
+- `compress` trong production
+- `cors`
+- structured request logging
+
+Không có middleware rate limit runtime trong code hiện tại, dù biến môi trường `RATE_LIMIT_PER_MINUTE` đã được khai báo để dành cho mở rộng sau.
+
+### 2.4 Tách trách nhiệm
+
+| Thành phần | Trách nhiệm |
+|---|---|
+| `client/` | Form nhập liệu, render dashboard, graph, badge, i18n, state phía browser |
+| `server/src/routes/` | API public và OpenAPI contract |
+| `server/src/services/openai.ts` | Skill extraction và embedding |
+| `server/src/services/vector-search/` | Gap analysis, similar devs, course recommendation |
+| `server/src/services/aggregations/` | Pivot path, proof drawer, salary band, salary inference |
+| `server/etl/` | Seed dữ liệu, embedding offline, index creation, precompute transitions |
+
+---
+
+## 3. Luồng runtime
+
+### 3.1 Luồng `POST /api/analyze`
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant FE as Client (Next.js)
-    participant API as Server (Hono)
-    participant G as OpenAI
-    participant M as MongoDB Atlas
+    participant FE as Next.js client
+    participant API as Hono server
+    participant AI as OpenAI
+    participant DB as MongoDB Atlas
 
-    U->>FE: Paste CV + chọn target "MLE"
-    FE->>API: POST /api/analyze {cv_text, target_role}
-    Note over API: Zod validate request
-    API->>G: extract_skills (gpt-4o-mini, JSON mode)
-    G-->>API: {skills, inferred_role, inferred_years}
-    API->>G: embed(cv) + embed(targetPrompt)
-    G-->>API: {cv_emb 768d, target_emb 768d}
+    U->>FE: Paste CV + chọn target role
+    FE->>API: POST /api/analyze
+    API->>AI: extractSkillsFromCV(cv_text)
+    AI-->>API: skills + inferred_role + inferred_years
+    API->>AI: embed(cv_text) + embed(targetPrompt)
+    AI-->>API: cv_embedding + target_embedding
 
-    par Gap Analysis
-        API->>M: $vectorSearch (skills) + evidence join
-        M-->>API: Missing skills ranked (hybrid)
-    and Pivot Paths
-        API->>M: $graphLookup + edge-only fallback<br/>(skill_transitions)
-        M-->>API: 3 path candidates
-    and Proof Drawer
-        API->>M: $facet<br/>(career_trajectories)
-        M-->>API: Sample size + lift + examples
-    and Similar Devs
-        API->>M: $vectorSearch or skill-overlap fallback
-        M-->>API: Role groups + avg salary
+    par Phase 1
+      API->>DB: gapAnalysis()
+      API->>DB: pivotPaths()
+      API->>DB: proofDrawer()
+      API->>DB: similarDevs()
     end
 
-    par Salary Band (Phase 2)
-        API->>M: $facet on jobs (level / company / skills)
-        M-->>API: VN salary distribution
-    and Salary Lift
-        API->>M: $group on pivots_detected
-        M-->>API: Median lift % per target
-    and Courses
-        API->>M: $vectorSearch on courses
-        M-->>API: Top-3 courses per missing skill
+    par Phase 2
+      API->>AI: embedBatch(top 3 missing skills)
+      API->>DB: recommendCourses()
+      API->>DB: salaryBand()
+      API->>DB: salaryInference()
     end
 
-    API-->>FE: Combined JSON response
-    FE-->>U: Render dashboard + graph + proof drawer
+    API-->>FE: AnalyzeResponse
+    FE-->>U: Render cards + graph + timings
 ```
 
-### 2.5 Deployment architecture
+### 3.2 Các bước chi tiết trong orchestrator
 
-```mermaid
-flowchart LR
-    DEV[Developer<br/>Local Machine] -->|git push| GH[GitHub<br/>main branch]
-    GH -->|webhook| VC[Vercel<br/>client/ deploy]
-    GH -->|webhook| RW[Railway<br/>server/ deploy]
-    VC -->|HTTPS| BR[User Browser]
-    BR -->|REST + CORS| RW
-    RW -->|Driver v6| MA[(MongoDB Atlas<br/>AWS Singapore)]
-    RW -->|HTTPS| GM[OpenAI API<br/>api.openai.com]
+File: `server/src/routes/orchestrator.ts`
 
-    style VC fill:#000,color:#fff
-    style RW fill:#7F2EE6,color:#fff
-    style MA fill:#13AA52,color:#fff
-```
+1. Validate `cv_text` và `target_role`.
+2. Dùng `gpt-4o-mini` để trích:
+   - `skills`
+   - `inferred_role`
+   - `inferred_years`
+3. Tạo embedding:
+   - CV text
+   - target prompt giàu ngữ cảnh role
+4. Chọn start skill theo thứ tự:
+   - level cao hơn
+   - số năm kinh nghiệm nhiều hơn
+5. Chuẩn hóa role bằng `role-normalizer.ts` để khớp canonical role của dataset.
+6. Chạy song song Phase 1:
+   - gap analysis
+   - pivot paths
+   - proof drawer
+   - similar devs
+7. Lấy top 3 missing skills rồi chạy song song Phase 2:
+   - course recommendations
+   - salary band
+   - salary inference
+8. Trả một payload duy nhất cho frontend, kèm `timings_ms`.
 
-**Region chọn:** MongoDB Atlas cluster đặt tại **AWS ap-southeast-1 (Singapore)** — gần VN nhất, latency ~30–50ms.
+### 3.3 Canonical role normalization
 
-**CORS policy:** Server cho phép `https://pathfinder-vn.vercel.app` (prod) + `http://localhost:3000` (dev) qua `hono/cors`.
+Dataset trajectory chỉ dùng 10 role canonical:
 
-### 2.6 Tech stack rationale (Architecture Decision Records)
+- `Frontend Developer`
+- `Backend Developer`
+- `Full-stack Developer`
+- `Mobile Developer`
+- `Data Engineer`
+- `Data Scientist`
+- `ML Engineer`
+- `AI Engineer`
+- `DevOps Engineer`
+- `Cloud Engineer`
 
-| ADR | Decision | Alternative considered | Rationale |
-|-----|----------|------------------------|-----------|
-| ADR-01 | **2-service: client/ + server/** | Next.js full-stack với API Routes | User đã có frontend template; tách trách nhiệm; deploy + scale độc lập |
-| ADR-02 | **OpenAI `text-embedding-3-small` + `gpt-4o-mini`** | Self-hosted embedding (`all-MiniLM-L6-v2`) + open-source LLM | OpenAI cho cross-lingual VI↔EN ổn định, JSON mode native với gpt-4o-mini, token cost rẻ ($0.02 / 1M tok cho embedding). Self-host đòi GPU + ops nằm ngoài scope hackathon. |
-| ADR-03 | Skip user auth | NextAuth + GitHub OAuth | Giảm scope; demo nhanh; privacy-first |
-| ADR-04 | Pre-compute `skill_transitions` offline | Runtime aggregation | P95 latency < 2s; aggregation phức tạp chạy 1 lần |
-| ADR-05 | Calibrated synthetic trajectories (~3,000, seed=42) | Scrape SO Survey | SO ZIP CDN rotates hashed paths → fragile; SO không có respondent_id cross-year → pivot phải INFER. Synthetic explicit, deterministic, demo reproducible cho judge. Schema giữ enum `source` để swap real data 1-1 sau. |
-| ADR-06 | Always label data provenance (`source` field) trong DB + UI | Bury origin | Minh bạch với BGK & người dùng; honesty = competitive moat trong career-advice space |
-| ADR-07 | **768-dim embedding** qua OpenAI Matryoshka truncation (`dimensions=768` trên `text-embedding-3-small`) | 1536-dim native OpenAI / 3072-dim `text-embedding-3-large` | Storage + index size nhỏ hơn 2x (full DB ~50 MB nằm thoải mái trong M0); recall thực đo ~98% so với 1536-dim trong test PathFinder. |
-| ADR-08 | Vector index dùng cosine | euclidean / dotProduct | Industry default, robust với non-normalized |
-| ADR-09 | **Hono framework cho server** | Express / Fastify / NestJS | TS-first, OpenAPI built-in (`@hono/zod-openapi`), ~14KB, deploy edge-anywhere, demo trông modern |
-| ADR-10 | **Zod = single source of truth** | TypeScript types + Joi validation riêng | Zod schema → infer TS types + auto OpenAPI + runtime validation |
-| ADR-11 | **Server hoàn toàn stateless** | Session middleware | Dễ scale horizontal; frontend giữ state qua localStorage |
-| ADR-12 | **`@xyflow/react` cho trajectory graph** | Custom SVG, D3 (`d3-zoom`/`d3-drag`) | xyflow đã có sẵn pan/zoom, minimap, controls, node/edge type system — viết custom node + custom edge với HTML label hoàn toàn theo style PathFinder mất ~340 LoC, ngắn hơn D3 từ scratch. Đồng thời được bundle treeshake (~120 KB gzipped). |
-| ADR-13 (new) | **Role normalizer (`role-normalizer.ts`)** giữa LLM output và dataset | Match free-form role trực tiếp vào aggregation | LLM emit "Tech Lead" / "Senior Software Engineer" nhưng dataset chỉ có 10 canonical labels (Frontend / Backend / ML / AI / ...). Helper normalise → exact match → strong regex → weighted skill-stack vote, đảm bảo proof drawer và similar-devs có evidence. |
-| ADR-14 (new) | **Honest Mode visual contract** ở client (badge + ẩn card) | Backend trả `confidence` rồi để UI tự xử lý ngầm | Threshold rõ ràng (`N≥30` xanh, `10≤N<30` vàng, `<10` ẩn) khớp luôn với PRD §12 và F7.3; user thấy ngay vì sao recommend đáng tin (hoặc không). |
-| ADR-15 (new) | **`$facet` jobs collection cho VN salary band** | Truy vấn 3 lần (level / company / skills) | Single round-trip, đúng pattern proof drawer. Câu lệnh ngắn, dễ test. |
+`role-normalizer.ts` map free-form title từ LLM sang các role này bằng:
+
+1. exact match
+2. regex theo title
+3. weighted vote theo skill stack
+4. fallback mặc định về `Backend Developer`
+
+Mục tiêu là tránh tình trạng LLM trả về title như `Tech Lead` hoặc `Senior Software Engineer` khiến aggregation match ra 0 dòng.
 
 ---
 
-## 3. Data Schema & Kiến trúc Dữ liệu MongoDB
+## 4. Thiết kế dữ liệu MongoDB
 
-### 3.1 Tổng quan 5 collections
+### 4.1 Collections thực tế
+
+| Collection | Vai trò | Runtime hiện tại |
+|---|---|---|
+| `skills` | Taxonomy skill + embedding | Có |
+| `courses` | Course catalog + embedding | Có |
+| `jobs` | JD/salary sample Việt Nam | Có |
+| `career_trajectories` | Cohort trajectory + pivot events | Có |
+| `skill_transitions` | Graph edge đã precompute từ trajectory | Có |
+| `roadmap_edges` | Cạnh roadmap từ roadmap.sh | ETL phụ trợ, chưa dùng runtime |
+| `users` | Schema/index cho session TTL | Đã khai báo, runtime hiện chưa ghi |
+
+Điểm quan trọng: orchestrator hiện là **stateless**. Nó không persist CV của user vào MongoDB trong luồng `/api/analyze`.
+
+### 4.2 Quan hệ dữ liệu
 
 ```mermaid
 erDiagram
-    users ||--o{ recommendations : "session-only, in-memory"
-    jobs }o--o{ skills : requires
-    courses }o--o{ skills : teaches
-    career_trajectories }o--|| skills : "contains in snapshots"
-    skill_transitions }o--|| skills : "from_skill → to_skill"
-    
-    users {
-        ObjectId _id
-        string display_name
-        string current_role
-        number years_exp
-        array skills
-        string cv_text
-        vector cv_embedding "768-dim (Matryoshka)"
+    SKILLS ||--o{ COURSES : "được dạy bởi"
+    SKILLS ||--o{ SKILL_TRANSITIONS : "from_skill"
+    CAREER_TRAJECTORIES ||--o{ SKILL_TRANSITIONS : "nguồn tính toán"
+    JOBS }o--o{ SKILLS : "required_skills"
+    ROADMAP_EDGES }o--o{ SKILLS : "taxonomy phụ trợ"
+
+    SKILLS {
+      string name
+      string slug
+      string category
+      array prerequisites
+      vector description_embedding
     }
-    jobs {
-        ObjectId _id
-        string title
-        string company
-        string level
-        number salary_min
-        number salary_max
-        array required_skills
-        string description
-        vector description_embedding
+    COURSES {
+      string title
+      string provider
+      array skills_taught
+      vector description_embedding
     }
-    skills {
-        ObjectId _id
-        string name
-        string category
-        string description
-        vector description_embedding
-        array prerequisites
+    JOBS {
+      string title
+      string company
+      string level
+      array required_skills
+      vector description_embedding
     }
-    courses {
-        ObjectId _id
-        string title
-        string provider
-        number price_usd
-        array skills_taught
-        vector description_embedding
+    CAREER_TRAJECTORIES {
+      string anon_id
+      string source
+      string current_role
+      array snapshots
+      array pivots_detected
     }
-    career_trajectories {
-        ObjectId _id
-        string anon_id
-        string source "so_2023 | so_2024 | synthetic"
-        string country
-        array snapshots
-    }
-    skill_transitions {
-        ObjectId _id
-        string from_skill
-        string to_skill
-        number frequency
-        number avg_months
-        number avg_salary_lift_pct
-        number sample_size
+    SKILL_TRANSITIONS {
+      string from_skill
+      string to_skill
+      number frequency
+      number avg_months
+      number avg_salary_lift_pct
+      string confidence
     }
 ```
 
-### 3.2 Tại sao chọn MongoDB (document model)?
+### 4.3 Schema chính
 
-| Đặc tính dữ liệu | Tại sao MongoDB phù hợp |
-|------------------|-------------------------|
-| Trajectory mỗi dev có **độ dài snapshot khác nhau** (1-10 năm KN) | Embedded array linh hoạt, không cần JOIN nhiều bảng |
-| Skills, courses cần **vector embedding 768-dim** liền cạnh metadata | **Atlas Vector Search** index ngay trong collection, không cần vector DB riêng |
-| Aggregation phức tạp (`$graphLookup` cho graph traversal) | **Native support** không cần migrate sang Neo4j |
-| JD và skill có **schema tiến hoá** (thêm field mới khi scale) | Schemaless, không cần migration đau khổ |
-| Filter động (country, years_exp, level) khi vector search | Atlas Vector Search hỗ trợ **pre-filter hybrid** |
-| Sample size nhỏ-trung (5k-65k docs) | M0 free tier xử lý thoải mái |
+#### `skills`
 
-**Kết luận:** PathFinder là use case showcase **đúng sở trường** của MongoDB: dữ liệu semi-structured + vector + graph traversal + aggregation đa tầng.
+- `name`
+- `slug`
+- `category`
+- `description`
+- `description_embedding`
+- `prerequisites`
+- `related_skills`
+- `popularity_rank`
+- `is_emerging`
+- `vn_demand_score`
 
-### 3.3 Collection design chi tiết
+#### `courses`
 
-#### 3.3.1 `users` (session-only, in-memory; không persist)
+- `title`
+- `provider`
+- `url`
+- `price_usd`
+- `duration_hours`
+- `level`
+- `skills_taught`
+- `description`
+- `description_embedding`
+- `rating`
+- `enrollment_count`
+- `is_mongodb_official`
 
-```typescript
-type UserProfile = {
-  _id: ObjectId;
-  display_name: string;             // "Demo Junior FE Nam" hoặc user-input
-  current_role: string;             // "Frontend Developer"
-  years_exp: number;                // 1.5
-  skills: Array<{
-    name: string;                   // "React"
-    level: "beginner" | "intermediate" | "advanced";
-    years: number;                  // 1.0
-  }>;
-  cv_text: string;                  // raw paste
-  cv_embedding: number[];           // 768-dim (text-embedding-3-small truncated via Matryoshka)
-  target_role?: string;             // "ML Engineer" hoặc custom
-  target_embedding?: number[];      // 768-dim
-  created_at: Date;
-  ttl_expires_at: Date;             // TTL index 1 giờ
-};
-```
+#### `jobs`
 
-**Indexes:**
-```javascript
-db.users.createIndex({ ttl_expires_at: 1 }, { expireAfterSeconds: 0 });
-```
+- `source`
+- `title`
+- `company`
+- `location`
+- `level`
+- `salary_min`
+- `salary_max`
+- `salary_currency`
+- `required_skills`
+- `nice_to_have`
+- `description`
+- `description_embedding`
 
-**Lý do TTL:** Privacy-first — không lưu CV user vĩnh viễn. Tự xoá sau 1 giờ.
+#### `career_trajectories`
 
-#### 3.3.2 `jobs` (ITViec scrape, 500 docs)
+- `anon_id`
+- `source`
+- `country`
+- `current_role`
+- `total_years_exp`
+- `comp_total_usd`
+- `snapshots[]`
+- `pivots_detected[]`
 
-```typescript
-type Job = {
-  _id: ObjectId;
-  source: "itviec" | "topcv" | "adzuna";
-  source_url: string;
-  title: string;                    // "Senior Frontend Engineer"
-  company: string;                  // "VNG"
-  location: string;                 // "HCM" | "HN" | "Remote"
-  level: "intern" | "junior" | "mid" | "senior" | "lead" | "manager";
-  salary_min: number;               // 25 (triệu VND)
-  salary_max: number;               // 40
-  salary_currency: "VND" | "USD";
-  required_skills: string[];        // ["React", "TypeScript", "Next.js"]
-  nice_to_have: string[];
-  description: string;
-  description_embedding: number[];  // 768-dim
-  posted_at: Date;
-  scraped_at: Date;
-};
-```
+#### `skill_transitions`
 
-**Indexes:**
-```javascript
-db.jobs.createIndex({ required_skills: 1 });
-db.jobs.createIndex({ level: 1, location: 1 });
-db.jobs.createIndex({ salary_min: 1 });
-db.jobs.createIndex({ "$**": "text" });  // optional, cho fallback keyword search
-```
+- `from_skill`
+- `to_skill`
+- `frequency`
+- `avg_months`
+- `median_months`
+- `avg_salary_lift_pct`
+- `role_change_rate`
+- `sample_size`
+- `confidence`
+- `computed_at`
+- `source_years`
 
-**Atlas Vector Search index (`vec_jobs_desc`):**
-```json
-{
-  "fields": [
-    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "level" },
-    { "type": "filter", "path": "location" },
-    { "type": "filter", "path": "salary_min" }
-  ]
-}
-```
+### 4.4 Vì sao dùng MongoDB
 
-#### 3.3.3 `skills` (roadmap.sh + manual VN extension, ~200 docs)
-
-```typescript
-type Skill = {
-  _id: ObjectId;
-  name: string;                     // "Next.js" (unique)
-  slug: string;                     // "nextjs"
-  category: "language" | "framework" | "database" | "cloud" | "tool" | "concept" | "soft";
-  description: string;              // 2-3 câu
-  description_embedding: number[];  // 768-dim
-  prerequisites: string[];          // ["React", "JavaScript"]
-  related_skills: string[];         // ["Remix", "Astro"]
-  popularity_rank: number;          // 1-200, computed từ JD frequency
-  is_emerging: boolean;             // true nếu growth > 50% YoY
-  vn_demand_score: number;          // 0-1, từ ITViec JD count
-};
-```
-
-**Indexes:**
-```javascript
-db.skills.createIndex({ name: 1 }, { unique: true });
-db.skills.createIndex({ category: 1 });
-db.skills.createIndex({ popularity_rank: 1 });
-```
-
-**Atlas Vector Search index (`vec_skills_desc`):**
-```json
-{
-  "fields": [
-    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "category" },
-    { "type": "filter", "path": "is_emerging" }
-  ]
-}
-```
-
-#### 3.3.4 `courses` (Coursera + Udemy + learn.mongodb.com, ~150 docs)
-
-```typescript
-type Course = {
-  _id: ObjectId;
-  title: string;
-  provider: "coursera" | "udemy" | "learn.mongodb.com" | "freecodecamp" | "youtube";
-  url: string;
-  price_usd: number;                // 0 cho free
-  duration_hours: number;
-  level: "beginner" | "intermediate" | "advanced";
-  skills_taught: string[];          // ["MongoDB Vector Search", "Atlas"]
-  description: string;
-  description_embedding: number[];
-  rating: number;                   // 0-5
-  enrollment_count: number;
-  is_mongodb_official: boolean;
-};
-```
-
-**Atlas Vector Search index (`vec_courses_desc`):**
-```json
-{
-  "fields": [
-    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "level" },
-    { "type": "filter", "path": "is_mongodb_official" },
-    { "type": "filter", "path": "price_usd" }
-  ]
-}
-```
-
-#### 3.3.5 `career_trajectories` (Calibrated synthetic SEA cohort, ~3,000 docs · enum `source` cho phép real SO/crowdsource sau)
-
-```typescript
-type CareerTrajectory = {
-  _id: ObjectId;
-  anon_id: string;                  // hash từ SO response_id, không có PII
-  source: "so_2023" | "so_2024" | "synthetic_vn";
-  country: string;                  // "Vietnam" | "Singapore" | "SEA" | "Global"
-  current_role: string;
-  total_years_exp: number;
-  comp_total_usd: number | null;    // converted to USD nếu có
-  ed_level: string;                 // "Bachelors" | "Masters" | "Bootcamp" | "Self-taught"
-  snapshots: Array<{
-    estimated_year: number;         // e.g. 2020 → derived from years_exp + survey_year
-    role: string;                   // "Junior FE Developer"
-    skills_have: string[];          // ["JavaScript", "HTML"]
-    skills_want: string[];          // ["React", "TypeScript"] ← pivot intent
-    salary_band?: "<10tr" | "10-20tr" | "20-30tr" | "30-50tr" | ">50tr";
-  }>;
-  pivots_detected: Array<{          // pre-computed in ETL
-    from_role: string;
-    to_role: string;
-    skill_added: string[];
-    months_taken: number;
-    salary_lift_pct: number;
-  }>;
-};
-```
-
-**Indexes:**
-```javascript
-db.career_trajectories.createIndex({ country: 1, total_years_exp: 1 });
-db.career_trajectories.createIndex({ current_role: 1 });
-db.career_trajectories.createIndex({ "snapshots.skills_have": 1 });
-db.career_trajectories.createIndex({ "pivots_detected.from_role": 1, "pivots_detected.to_role": 1 });
-db.career_trajectories.createIndex({ source: 1 });
-```
-
-#### 3.3.6 `skill_transitions` (pre-computed, ~2,000 docs)
-
-```typescript
-type SkillTransition = {
-  _id: ObjectId;
-  from_skill: string;               // "React"
-  to_skill: string;                 // "Next.js"
-  frequency: number;                // 1247 (số dev đã transition)
-  avg_months: number;               // 8.4
-  median_months: number;            // 6
-  avg_salary_lift_pct: number;      // 12.3
-  role_change_rate: number;         // 0.34 (xác suất đổi role kèm)
-  sample_size: number;              // = frequency
-  confidence: "high" | "medium" | "low";  // dựa trên sample_size
-  computed_at: Date;
-  source_years: number[];           // [2023, 2024]
-};
-```
-
-**Indexes:**
-```javascript
-db.skill_transitions.createIndex({ from_skill: 1, to_skill: 1 }, { unique: true });
-db.skill_transitions.createIndex({ from_skill: 1, frequency: -1 });
-db.skill_transitions.createIndex({ confidence: 1 });
-```
-
-**Pre-computation pipeline (chạy 1 lần ETL):**
-```javascript
-db.career_trajectories.aggregate([
-  { $unwind: "$pivots_detected" },
-  { $unwind: "$pivots_detected.skill_added" },
-  {
-    $group: {
-      _id: {
-        from: "$current_role",
-        to: "$pivots_detected.to_role",
-        skill: "$pivots_detected.skill_added"
-      },
-      frequency: { $sum: 1 },
-      avg_months: { $avg: "$pivots_detected.months_taken" },
-      avg_lift: { $avg: "$pivots_detected.salary_lift_pct" }
-    }
-  },
-  { $match: { frequency: { $gte: 5 } } },
-  { $out: "skill_transitions" }
-]);
-```
-
-### 3.4 Schema validation (JSON Schema enforced)
-
-Mỗi collection có validator để tránh dirty data từ ETL:
-
-```javascript
-db.createCollection("skill_transitions", {
-  validator: {
-    $jsonSchema: {
-      bsonType: "object",
-      required: ["from_skill", "to_skill", "frequency", "sample_size"],
-      properties: {
-        from_skill: { bsonType: "string", minLength: 1 },
-        to_skill:   { bsonType: "string", minLength: 1 },
-        frequency:  { bsonType: "int", minimum: 1 },
-        avg_months: { bsonType: "double", minimum: 0, maximum: 240 },
-        avg_salary_lift_pct: { bsonType: "double", minimum: -50, maximum: 500 },
-        confidence: { enum: ["high", "medium", "low"] }
-      }
-    }
-  }
-});
-```
-
-### 3.5 Data sources & lineage
-
-```mermaid
-flowchart LR
-    GEN[Synthetic Trajectory Generator<br/>seed=42<br/>~3,000 SEA cohort] --> PIVOT[Trajectories already include<br/>explicit pivots: from_role,<br/>to_role, skill_added, months,<br/>salary_lift_pct]
-    PIVOT --> CT[career_trajectories<br/>~5k docs]
-    
-    ITVIEC[ITViec.com<br/>Public JDs] --> SCRAPE[Playwright<br/>Scrape]
-    SCRAPE --> JOBS[jobs<br/>~500 docs]
-    
-    ROADMAP[roadmap.sh<br/>GitHub JSON] --> SKILLS[skills<br/>~200 docs]
-    
-    COURSERA[Coursera<br/>Public Catalog] --> CRS[courses<br/>~150 docs]
-    LEARN[learn.mongodb.com] --> CRS
-    
-    LLM[OpenAI gpt-4o-mini<br/>Synthetic VN Persona<br/>(when applicable)] --> CT
-    
-    CT --> AGG[Pre-compute<br/>skill_transitions]
-    AGG --> ST[skill_transitions<br/>~2k docs]
-```
-
-### 3.6 Storage size estimate
-
-| Collection | Docs | Avg size | Vector size | Total |
-|-----------|------|----------|-------------|-------|
-| jobs | 500 | 2 KB | 3 KB | ~2.5 MB |
-| skills | 200 | 0.5 KB | 3 KB | ~700 KB |
-| courses | 150 | 0.5 KB | 3 KB | ~525 KB |
-| career_trajectories | 5,000 | 4 KB | — | ~20 MB |
-| skill_transitions | 2,000 | 0.3 KB | — | ~600 KB |
-| users (TTL 1h) | < 100 (transient) | 5 KB | 3 KB | ~800 KB |
-| **Total** | **~7,950** | | | **~25 MB** |
-
-→ Thoải mái nằm trong **M0 free tier** (512 MB).
+| Nhu cầu | Lợi ích của MongoDB |
+|---|---|
+| Snapshot career có độ dài khác nhau | Embedded arrays tự nhiên hơn mô hình bảng |
+| Metadata và vector nằm cùng document | Không cần tách sang vector DB riêng |
+| Recommendation cần join và analytics | Có `$lookup`, `$facet`, `$group`, `$graphLookup` |
+| Taxonomy và dữ liệu roadmap thay đổi theo thời gian | Schema linh hoạt |
+| Runtime cần filter trước khi vector search | Atlas Vector Search hỗ trợ filter |
 
 ---
 
-## 4. Vector Search & Aggregation Pipeline — Cách Áp dụng
-
-Phần này mô tả **đúng implementation hiện tại** trong `server/src/` (không phải bản thiết kế PRD ban đầu). Mỗi use case gắn file nguồn để BGK đối chiếu repo.
-
-### 4.0 Bản đồ implementation (file ↔ MongoDB technique)
-
-| UC | Endpoint / caller | File service | Collection chính | Kỹ thuật nổi bật |
-|----|-------------------|--------------|------------------|-------------------|
-| UC-1 | `POST /api/analyze` | `services/vector-search/skills.ts` | `skill_transitions`, `skills` | `$lookup` + `$vectorSearch` + merge |
-| UC-2 | Phase 2 orchestrator | `services/vector-search/courses.ts` | `courses` | `$vectorSearch` + `$addFields` hybrid rank |
-| UC-3 | Phase 1 orchestrator | `services/vector-search/similar-devs.ts` | `career_trajectories` | `$vectorSearch` **hoặc** `$setIntersection` fallback |
-| UC-4 | Phase 1 orchestrator | `services/aggregations/pivot-path.ts` | `skill_transitions` | `$match`/`$sort` + synthesis; `$graphLookup` optional |
-| UC-5 | Phase 2 orchestrator | `services/aggregations/salary-inference.ts` | `career_trajectories` | `$unwind` + `$group` + `$avg` |
-| UC-6 | Phase 1 orchestrator | `services/aggregations/proof-drawer.ts` | `career_trajectories` | `$facet` (5 sub-pipelines) |
-| UC-7 | Phase 2 orchestrator | `services/aggregations/salary-band.ts` | `jobs` | `$match` + `$facet` (4 facets) |
-| ETL | Offline | `etl/07_compute_transitions.py` | `career_trajectories` → `skill_transitions` | `$group` + `$out` |
-
-Orchestrator: `routes/orchestrator.ts` — Phase 1 chạy `Promise.all` (gap, paths, proof, similar); Phase 2 chạy song song (courses, salary band, salary inference).
-
-### 4.1 Use Case Map
-
-| # | Use Case | Vector Search | Aggregation Pipeline | Section |
-|---|----------|:-:|:-:|---|
-| UC-1 | **Gap Analysis** (thiếu skill gì để vào target role) | ✓ semantic | ✓ evidence (`$lookup`) | 4.2 |
-| UC-2 | **Course Matching** (course lấp gap) | ✓ | ✓ hybrid `$sort` | 4.3 |
-| UC-3 | **Similar Devs** (dev giống mình đang ở role nào) | ✓ primary | ✓ fallback overlap | 4.4 |
-| UC-4 | **Pivot Paths** (3 lộ trình Fast/Balanced/Comprehensive) | | ✓ edges + optional `$graphLookup` | 4.5 |
-| UC-5 | **Salary Inference** (lift sau khi học gap skills) | | ✓ `$unwind` + `$group` | 4.6 |
-| UC-6 | **Proof Drawer** (N, conversion, examples) | | ✓ `$facet` | 4.7 |
-| UC-7 | **VN Salary Band** (JD VN theo level/company) | | ✓ `$facet` on `jobs` | 4.8 |
-
-### 4.2 UC-1 — Gap Analysis (Evidence + Vector Search hybrid)
-
-**Câu hỏi:** *"User muốn vào AI Engineer — còn thiếu skill gì?"*
-
-**File:** `server/src/services/vector-search/skills.ts`
-
-**Chiến lược (2 nhánh song song, merge trong application code):**
-
-| Nhánh | Collection | Kỹ thuật | Vai trò |
-|-------|------------|----------|---------|
-| **Evidence-first** | `skill_transitions` → `$lookup` `skills` | Aggregation | Skills đã **thực sự** giúp dev pivot vào `target_role` (frequency, months, lift) |
-| **Semantic** | `skills` | `$vectorSearch` trên `target_embedding` | Bổ sung khi evidence sparse hoặc target role tự do |
-
-`cv_embedding` vẫn được orchestrator embed (dùng cho similar devs), nhưng **gap list không dùng phép trừ vector** — semantic search chạy trực tiếp trên embedding của **target prompt** (role + stack hints).
-
-**Pipeline A — Evidence (`evidenceGap`):**
-
-```javascript
-// skill_transitions: edges (from_skill → to_skill) where to_skill = canonical target role
-db.skill_transitions.aggregate([
-  { $match: { to_skill: targetRole } },
-  { $sort: { frequency: -1, avg_salary_lift_pct: -1 } },
-  { $limit: limit * 2 },
-  {
-    $lookup: {
-      from: "skills",
-      let: { skName: "$from_skill" },
-      pipeline: [
-        { $match: { $expr: { $eq: ["$name", "$$skName"] } } },
-        { $limit: 1 },
-        { $project: { description: 1, category: 1, vn_demand_score: 1 } }
-      ],
-      as: "skill_info"
-    }
-  },
-  { $addFields: { skill_info: { $arrayElemAt: ["$skill_info", 0] } } }
-]);
-```
-
-**Pipeline B — Semantic (`semanticGap`):**
-
-```javascript
-db.skills.aggregate([
-  {
-    $vectorSearch: {
-      index: "vec_skills_desc",
-      path: "description_embedding",
-      queryVector: targetEmbedding,   // rich target-role prompt, NOT gap vector
-      numCandidates: 400,
-      limit: 60,
-      filter: { category: { $in: ["framework", "tool", "concept", "cloud", "language"] } }
-    }
-  },
-  // Post-filter: denylist roadmap.sh junk (titles with "?", "Intro", Sanity IDs, …)
-  { $match: { /* $and: [ $not regex filters … ] */ } },
-  { $project: { name: 1, category: 1, description: 1, similarity: { $meta: "vectorSearchScore" } } },
-  {
-    $lookup: {
-      from: "skill_transitions",
-      let: { skillName: "$name" },
-      pipeline: [
-        { $match: { $expr: { $eq: ["$from_skill", "$$skillName"] } } },
-        { $sort: { frequency: -1 } },
-        { $limit: 1 }
-      ],
-      as: "transition_info"
-    }
-  }
-]);
-```
-
-**Merge (TypeScript):** `[...evidence, ...semantic]` → dedupe theo `name` → loại skills user đã có → cap `limit`. Evidence thắng khi trùng tên.
-
-**Tại sao approach này mạnh hơn gap-vector thuần?**
-- Evidence gắn **cohort thật** (`frequency`, `avg_months`) — phù hợp Honest Mode.
-- Semantic vẫn cover target role mới / sparse graph.
-- `$lookup` chéo collection trong cùng request gap = hybrid Vector + Aggregation trong một feature.
-
-### 4.3 UC-2 — Course Matching (Vector Search + hybrid re-rank)
-
-**Câu hỏi:** *"Skill thiếu = LangChain. Course nào dạy tốt nhất?"*
-
-**File:** `server/src/services/vector-search/courses.ts`
-
-Orchestrator embed mô tả skill (`embedBatch` top-3 missing skills), rồi gọi `recommendCourses` **mỗi skill một pipeline**.
-
-```javascript
-db.courses.aggregate([
-  {
-    $vectorSearch: {
-      index: "vec_courses_desc",
-      path: "description_embedding",
-      queryVector: skillEmbedding,
-      numCandidates: 100,
-      limit: 15,
-      filter: {
-        $or: [
-          { is_mongodb_official: true },
-          { price_usd: 0 },
-          { price_usd: { $lte: 50 } }
-        ]
-      }
-    }
-  },
-  {
-    $addFields: {
-      similarity: { $meta: "vectorSearchScore" },
-      exact_match: {
-        $cond: [{ $in: [skillName, { $ifNull: ["$skills_taught", []] }] }, 1, 0]
-      }
-    }
-  },
-  {
-    $addFields: {
-      token_match: {
-        $cond: [
-          { $regexMatch: { input: { $concat: [lowerTitle, " ", lowerDesc] }, regex: tokens } },
-          1, 0
-        ]
-      }
-    }
-  },
-  { $sort: { exact_match: -1, token_match: -1, similarity: -1 } },
-  { $limit: 3 }
-]);
-```
-
-**Lưu ý thiết kế:** Không `$match` cứng `skills_taught: skillName` — catalog dùng tên canonical ("MongoDB Vector Search") trong khi gap có thể trả "Vector Databases". Vector similarity + token boost giữ recall cao mà vẫn ưu tiên exact match khi có.
-
-### 4.4 UC-3 — Similar Devs (Vector Search primary + Aggregation fallback)
-
-**Câu hỏi:** *"Dev có stack giống tôi thường kết thúc ở role nào?"*
-
-**File:** `server/src/services/vector-search/similar-devs.ts`
-
-**Path 1 — Vector Search (khi `snapshots.cv_embedding` đã được ETL embed):**
-
-```javascript
-db.career_trajectories.aggregate([
-  {
-    $vectorSearch: {
-      index: "vec_trajectory_snapshot",
-      path: "snapshots.cv_embedding",
-      queryVector: cvEmbedding,
-      numCandidates: limit * 4,
-      limit: limit,
-      filter: { country: { $in: ["Vietnam", "Singapore", "SEA", …] } }
-    }
-  },
-  {
-    $group: {
-      _id: "$current_role",
-      count: { $sum: 1 },
-      avg_salary_usd: { $avg: "$comp_total_usd" }
-    }
-  },
-  { $sort: { count: -1 } },
-  { $limit: 8 }
-]);
-```
-
-Nếu pipeline trả về **0 group** (hoặc index chưa có data) → fall through.
-
-**Path 2 — Aggregation fallback (chạy trên seed hiện tại):**
-
-```javascript
-db.career_trajectories.aggregate([
-  {
-    $match: {
-      country: { $in: ["Vietnam", "Singapore", …] },
-      $or: [
-        { "snapshots.role": startRole },
-        { "snapshots.skills_have": { $in: userSkills } }
-      ]
-    }
-  },
-  {
-    $addFields: {
-      all_skills: {
-        $reduce: {
-          input: "$snapshots.skills_have",
-          initialValue: [],
-          in: { $setUnion: ["$$value", "$$this"] }
-        }
-      }
-    }
-  },
-  {
-    $addFields: {
-      skill_overlap: { $size: { $setIntersection: ["$all_skills", userSkills] } }
-    }
-  },
-  { $match: { skill_overlap: { $gte: 1 } } },
-  { $sort: { skill_overlap: -1, total_years_exp: -1 } },
-  { $limit: limit },
-  {
-    $group: {
-      _id: "$current_role",
-      count: { $sum: 1 },
-      avg_salary_usd: { $avg: "$comp_total_usd" }
-    }
-  },
-  { $sort: { count: -1 } },
-  { $limit: 8 }
-]);
-```
-
-**Output UI:** bar chart theo `current_role` + `count` + `avg_salary_usd` (card Similar Developers).
-
-### 4.5 UC-4 — Pivot Path Discovery (Direct edges + optional `$graphLookup`)
-
-**Câu hỏi:** *"Lộ trình từ stack hiện tại → AI Engineer qua skill nào, mất bao lâu?"*
-
-**File:** `server/src/services/aggregations/pivot-path.ts`
-
-**Data model thực tế:** ETL seed `skill_transitions` dạng **(from_skill → to_role)** — mỗi edge là một skill giúp pivot **vào** target role, không phải chuỗi skill→skill nhiều hop. Vì vậy production path **không phụ thuộc** `$graphLookup` để trả kết quả.
-
-**Bước 1 — Lấy direct edges (Aggregation):**
-
-```javascript
-db.skill_transitions.aggregate([
-  { $match: { to_skill: targetSkill } },   // canonical target role label
-  { $sort: { frequency: -1 } },
-  { $limit: 30 }
-]);
-```
-
-**Bước 2 — Optional `$graphLookup` (demo / future multi-hop graph):**
-
-```javascript
-// Chạy thử khi graph có skill→skill chains; với seed hiện tại thường trả rỗng.
-db.skill_transitions.aggregate([
-  { $match: { from_skill: { $in: [startSkill, ...userSkills] } } },
-  {
-    $graphLookup: {
-      from: "skill_transitions",
-      startWith: "$to_skill",
-      connectFromField: "to_skill",
-      connectToField: "from_skill",
-      as: "downstream",
-      maxDepth: 4,
-      depthField: "depth",
-      restrictSearchWithMatch: { confidence: { $in: ["high", "medium", "low"] } }
-    }
-  },
-  { $limit: 1 }
-]);
-```
-
-**Bước 3 — Synthesize 3 flavors (application logic, không thêm query):**
-
-| Flavor | Cách chọn edge | Path shape |
-|--------|----------------|------------|
-| **Fast** | `avg_months` thấp nhất | 1 hop: start → skill → target |
-| **Balanced** | max `(lift / months) × log10(frequency)` | 1 hop, trade-off tốt |
-| **Comprehensive** | top-3 `frequency`, dedupe skill | multi-hop chain qua 2–3 skills |
-
-UI: tab list (`pivot-paths-card.tsx`) + swimlane graph (`trajectory-graph-card.tsx`, `@xyflow/react`).
-
-**Kỹ thuật showcase cho BGK:**
-- Pre-computed graph + **$match/$sort** cho latency ổn định.
-- `$graphLookup` vẫn có trong codebase — sẵn sàng khi ETL enrich thêm skill→skill edges.
-- Honest labeling: graph hiển thị edge metrics từ cohort, không invent path khi DB sparse.
-
-### 4.6 UC-5 — Salary Inference sau pivot (Aggregation `$unwind` + `$group`)
-
-**Câu hỏi:** *"Sau khi học các gap skills, cohort pivot sang role nào và lift bao nhiêu?"*
-
-**File:** `server/src/services/aggregations/salary-inference.ts`
-
-Input: top missing skill names từ UC-1. Pipeline:
-
-```javascript
-db.career_trajectories.aggregate([
-  { $match: { country: { $in: ["Vietnam", "Singapore", "SEA"] } } },
-  { $unwind: "$pivots_detected" },
-  { $match: { "pivots_detected.skill_added": { $all: skillsLearned } } },
-  {
-    $group: {
-      _id: "$pivots_detected.to_role",
-      sample_size: { $sum: 1 },
-      avg_months: { $avg: "$pivots_detected.months_taken" },
-      median_lift: { $avg: "$pivots_detected.salary_lift_pct" }
-    }
-  },
-  { $match: { sample_size: { $gte: 3 } } },
-  { $sort: { median_lift: -1 } },
-  { $limit: 10 }
-]);
-```
-
-Hiển thị trên **Salary Band card** (bảng "Salary lift after learning the gap skills"). Không dùng `$bucket` — grouping theo `to_role` đủ cho MVP.
-
-### 4.7 UC-6 — Proof Drawer (Aggregation `$facet`)
-
-**Câu hỏi:** *"Có bao nhiêu dev từ role A đã pivot sang role B? Lift bao nhiêu? Cho 3 ví dụ."*
-
-**File:** `server/src/services/aggregations/proof-drawer.ts`
-
-**Match cohort:** devs từng có `snapshots.role === from_role` (canonical, sau `role-normalizer`).
-
-```javascript
-db.career_trajectories.aggregate([
-  { $match: { "snapshots.role": fromRole } },
-  {
-    $facet: {
-      sample_size: [
-        { $match: { "pivots_detected.to_role": toRole } },
-        { $count: "n" }
-      ],
-      conversion: [
-        {
-          $group: {
-            _id: null,
-            total_with_intent: { $sum: 1 },
-            total_completed: {
-              $sum: { $cond: [{ $eq: ["$current_role", toRole] }, 1, 0] }
-            }
-          }
-        }
-      ],
-      salary_stats: [
-        { $unwind: "$pivots_detected" },
-        { $match: { "pivots_detected.to_role": toRole } },
-        {
-          $group: {
-            _id: null,
-            median_lift: { $avg: "$pivots_detected.salary_lift_pct" },
-            min_lift: { $min: "$pivots_detected.salary_lift_pct" },
-            max_lift: { $max: "$pivots_detected.salary_lift_pct" },
-            avg_months: { $avg: "$pivots_detected.months_taken" }
-          }
-        }
-      ],
-      examples: [
-        { $match: { "pivots_detected.to_role": toRole } },
-        { $sample: { size: 3 } },
-        {
-          $project: {
-            anon_id: 1,
-            starting_role: { $arrayElemAt: ["$snapshots.role", 0] },
-            current_role: 1,
-            total_years_exp: 1,
-            ed_level: 1,
-            source: 1
-          }
-        }
-      ],
-      sources: [
-        { $group: { _id: "$source" } },
-        { $project: { source: "$_id" } }
-      ]
-    }
-  }
-]);
-```
-
-**Conversion rate (đã sửa so với bản doc cũ):**
-- **Mẫu số** = mọi trajectory trong cohort `from_role`.
-- **Tử số** = `current_role === toRole` (đã hoàn thành pivot).
-- Không dùng `skills_want` (field đó là tên skill, không phải role).
-
-**Confidence (application):** `high` nếu N≥100, `medium` nếu N≥30, else `low` — drive Honest Mode UI.
-
-**Tại sao `$facet` mạnh:** 5 metric + data sources trong **một round-trip** → card Proof Drawer render ngay, P95 thấp.
-
-### 4.8 UC-7 — VN Salary Band (Aggregation `$facet` on `jobs`)
-
-**Câu hỏi:** *"AI Engineer ở VN đang được trả bao nhiêu? Công ty nào hire? Skill nào hot trong JD?"*
-
-**File:** `server/src/services/aggregations/salary-band.ts`
-
-**Match JD:** title regex theo alias role (ITViec keywords) **HOẶC** `required_skills` overlap với top missing skills từ UC-1.
-
-```javascript
-db.jobs.aggregate([
-  {
-    $match: {
-      $or: [
-        { title: { $regex: "AI Engineer|LLM|GenAI", $options: "i" } },
-        { required_skills: { $in: ["LangChain", "Vector Databases", …] } }
-      ]
-    }
-  },
-  {
-    $facet: {
-      by_level: [
-        {
-          $group: {
-            _id: "$level",
-            count: { $sum: 1 },
-            median_min: { $avg: "$salary_min" },
-            median_max: { $avg: "$salary_max" },
-            min_vnd: { $min: "$salary_min" },
-            max_vnd: { $max: "$salary_max" }
-          }
-        },
-        { $sort: { median_max: 1 } }
-      ],
-      top_companies: [
-        { $sort: { salary_max: -1 } },
-        {
-          $group: {
-            _id: "$company",
-            count: { $sum: 1 },
-            top_title: { $first: "$title" },
-            top_level: { $first: "$level" }
-          }
-        },
-        { $sort: { count: -1 } },
-        { $limit: 5 }
-      ],
-      top_skills: [
-        { $unwind: "$required_skills" },
-        { $group: { _id: "$required_skills", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 8 }
-      ],
-      overall: [
-        {
-          $group: {
-            _id: null,
-            n: { $sum: 1 },
-            median_min: { $avg: "$salary_min" },
-            median_max: { $avg: "$salary_max" },
-            min_vnd: { $min: "$salary_min" },
-            max_vnd: { $max: "$salary_max" }
-          }
-        }
-      ]
-    }
-  }
-]);
-```
-
-**UI:** `salary-band-card.tsx` — bar theo seniority, top companies, skill tags, kèm UC-5 lift table.
-
-### 4.9 Tổng hợp: Vector Search vs Aggregation trong một request
-
-```mermaid
-flowchart LR
-  subgraph Phase1["Phase 1 — Promise.all"]
-    G[UC-1 Gap<br/>$lookup + $vectorSearch]
-    P[UC-4 Paths<br/>$match/$sort]
-    PR[UC-6 Proof<br/>$facet]
-    S[UC-3 Similar<br/>$vectorSearch or $setIntersection]
-  end
-  subgraph Phase2["Phase 2 — Promise.all"]
-    C[UC-2 Courses<br/>$vectorSearch ×3]
-    J[UC-7 Salary Band<br/>$facet jobs]
-    L[UC-5 Salary Lift<br/>$unwind + $group]
-  end
-  Phase1 --> Phase2
-```
-
-Cả **Atlas Vector Search** (3 collection có index) và **Aggregation Pipeline** (`$facet`, `$graphLookup`, `$group`, `$lookup`, `$setIntersection`) đều là đường dẫn production — không chỉ demo ETL.
+## 5. Vector Search và Aggregation Pipeline
+
+### 5.1 Gap analysis
+
+File: `server/src/services/vector-search/skills.ts`
+
+Hệ thống dùng hai đường retrieval song song:
+
+1. **Evidence-first**
+   - query `skill_transitions` theo `to_skill = target_role`
+   - sort theo `frequency`, `avg_salary_lift_pct`
+   - `$lookup` sang `skills`
+2. **Semantic fallback**
+   - `$vectorSearch` trên `skills.description_embedding`
+   - filter theo category
+   - loại bỏ tên node rác từ taxonomy scrape
+   - `$lookup` thêm transition info
+
+Sau đó merge theo tên skill, ưu tiên evidence row trước semantic row.
+
+Kết quả trả về:
+
+- `name`
+- `category`
+- `description`
+- `similarity`
+- `vn_demand_score`
+- `transition`
+
+### 5.2 Course recommendation
+
+File: `server/src/services/vector-search/courses.ts`
+
+Luồng:
+
+1. Embed top 3 missing skills bằng `embedBatch`.
+2. `$vectorSearch` trên `courses.description_embedding`.
+3. Pre-filter:
+   - course chính thức của MongoDB
+   - hoặc free
+   - hoặc giá `<= 50 USD`
+4. Tính `exact_match`, `token_match`, rồi sort:
+   - exact match giảm dần
+   - token match giảm dần
+   - similarity giảm dần
+
+Đây là hybrid ranking, không phải chỉ semantic search thuần túy.
+
+### 5.3 Similar developers
+
+File: `server/src/services/vector-search/similar-devs.ts`
+
+Có hai đường chạy:
+
+1. **Primary**
+   - `$vectorSearch` trên `snapshots.cv_embedding`
+2. **Fallback hiện đang được dùng với synthetic seed**
+   - `$reduce` để flatten toàn bộ `snapshots.skills_have`
+   - `$setIntersection` để tính overlap
+   - `$group` theo `current_role`
+
+ETL seed hiện tại không populate `snapshots.cv_embedding`, nên hệ thống tự động rơi về aggregation fallback cho use case này.
+
+### 5.4 Pivot paths
+
+File: `server/src/services/aggregations/pivot-path.ts`
+
+Luồng hiện tại:
+
+1. ETL biến mỗi pivot thành chuỗi thật:
+   - `from_role -> skill_1 -> skill_2 -> ... -> to_role`
+2. Runtime bắt đầu từ canonical `start_role`.
+3. `$graphLookup` lấy toàn bộ reachable subgraph trong giới hạn depth và chỉ đi qua edge có cùng `target_roles`.
+4. Service dựng candidate paths từ graph và chọn 3 flavor:
+   - `fast`: ít tháng nhất
+   - `balanced`: lift-per-month có trọng số support
+   - `comprehensive`: đường dài hơn, support/confidence tốt hơn
+5. Nếu DB cũ chưa được rerun ETL và chỉ còn edge legacy `skill -> role`, service mới fallback về synthesis cũ để API không bị tối.
+
+### 5.5 Proof drawer
+
+File: `server/src/services/aggregations/proof-drawer.ts`
+
+Một `$facet` trả về trong một round-trip:
+
+- `sample_size`
+- `conversion`
+- `salary_stats`
+- `examples`
+- `sources`
+
+Cách tính:
+
+- Mẫu số conversion = mọi trajectory từng đi qua `from_role`
+- Tử số conversion = trajectory có `current_role === to_role`
+- Confidence backend:
+  - `high` nếu `N >= 100`
+  - `medium` nếu `N >= 30`
+  - `low` nếu thấp hơn
+
+Frontend vẫn áp dụng Honest Mode chặt hơn theo ngưỡng render card.
+
+### 5.6 Salary band
+
+File: `server/src/services/aggregations/salary-band.ts`
+
+Nguồn: `jobs`
+
+Match bằng:
+
+- regex title alias theo role
+- hoặc overlap với top missing skills
+
+Một `$facet` trả về:
+
+- `by_level`
+- `top_companies`
+- `top_skills`
+- `overall`
+
+### 5.7 Salary inference
+
+File: `server/src/services/aggregations/salary-inference.ts`
+
+Luồng:
+
+- `$unwind` `pivots_detected`
+- `$match` pivots chứa toàn bộ `skills_learned`
+- `$group` theo `to_role`
+- trả `sample_size`, `avg_months`, `median_lift_pct`
+
+Lưu ý: trường tên là `median_lift_pct`, nhưng code hiện dùng `$avg` làm xấp xỉ.
 
 ---
 
-## 5. Hiệu năng & Khả năng mở rộng
+## 6. API contract
 
-### 5.1 Performance baseline (target)
+### 6.1 Endpoint list
 
-| Operation | Target P95 | Strategy |
-|-----------|:-:|----------|
-| Vector Search top-10 | < 800ms | Pre-warm index, numCandidates 100 |
-| Pivot paths (direct edges + synthesis) | < 800ms | Pre-computed `skill_transitions`; optional `$graphLookup` best-effort |
-| `$facet` Proof Drawer + Salary Band | < 1.5s | Indexes trên match keys; single round-trip mỗi card |
-| Embedding generation (OpenAI) | < 1.2s | `text-embedding-3-small` p50 ~400ms |
-| Full /api/analyze E2E | < 4s | 2 phases × `Promise.all` (gap/paths/proof/similar // courses/salary/lift) |
+| Method | Path | Chức năng |
+|---|---|---|
+| `GET` | `/health` | Kiểm tra MongoDB + OpenAI |
+| `GET` | `/docs` | Swagger UI |
+| `GET` | `/openapi.json` | OpenAPI spec |
+| `POST` | `/api/extract-skills` | Parse CV bằng LLM |
+| `POST` | `/api/embed` | Tạo embedding 768 chiều |
+| `POST` | `/api/gap-analysis` | Phân tích skill gap |
+| `POST` | `/api/pivot-paths` | Sinh path |
+| `POST` | `/api/proof-drawer` | Trả evidence |
+| `POST` | `/api/similar-devs` | Nhóm developer tương tự |
+| `POST` | `/api/course-recommendations` | Gợi ý course |
+| `POST` | `/api/analyze` | Orchestrator end-to-end |
 
-### 5.2 Optimization techniques
+### 6.2 `POST /api/analyze`
 
-1. **Pre-computation pipeline** — `skill_transitions` computed offline (ETL), không runtime.
-2. **Index strategy** — Compound indexes match query shape (`{ from_skill: 1, frequency: -1 }`).
-3. **`numCandidates` tuning** — Set ≈ 10× `limit` cho recall/latency balance.
-4. **Filter hybrid** — Pre-filter trong `$vectorSearch.filter` giảm candidate pool đáng kể.
-5. **Connection pool** — Atlas driver pool size = 5 (vừa đủ M0).
-6. **Promise.all** — Parallel call cho 3 use case độc lập (gap + paths + proof).
-7. **Frontend caching** — SWR cache 60s cho preset target role results.
-8. **TTL index trên users** — Tự xoá sau 1h, không phình DB.
+Request:
 
-### 5.3 Scale plan (post-hackathon)
+```json
+{
+  "cv_text": "string, 50..8000 chars",
+  "target_role": "AI Engineer"
+}
+```
 
-| Phase | User scale | Infra change |
-|-------|-----------|--------------|
-| Hackathon | < 1k user | Atlas M0 free |
-| Beta launch | 10k user | Atlas M10 (~$60/month), Vercel Pro |
-| Growth | 100k user | Atlas M30 + Atlas Search dedicated, Redis cache layer |
-| Scale | 1M user | Atlas Multi-region (SG + JP), CDN edge cache |
+Response cấp cao:
+
+```json
+{
+  "profile": {},
+  "gap_analysis": {},
+  "pivot_paths": {},
+  "proof_drawer": {},
+  "similar_devs": {},
+  "courses_by_skill": [],
+  "salary_band": {},
+  "pivot_salary_lift": [],
+  "timings_ms": {}
+}
+```
+
+Schema backend đặt tại:
+
+- `server/src/schemas/api.ts`
+- `server/src/schemas/*.ts`
+
+Frontend giữ type mirror thủ công tại:
+
+- `client/src/lib/pathfinder/types.ts`
+
+### 6.3 Error handling
+
+Server dùng envelope chuẩn:
+
+```json
+{
+  "error": {
+    "code": "string",
+    "message": "string",
+    "details": {}
+  }
+}
+```
+
+Frontend map lỗi này qua `PathFinderApiError`.
 
 ---
 
-## 6. Sample Data
+## 7. Frontend implementation
 
-### 6.1 Sample `skill_transitions` document
+### 7.1 Entry point
 
-```json
-{
-  "_id": ObjectId("..."),
-  "from_skill": "React",
-  "to_skill": "Next.js",
-  "frequency": 1247,
-  "avg_months": 8.4,
-  "median_months": 6,
-  "avg_salary_lift_pct": 12.3,
-  "role_change_rate": 0.34,
-  "sample_size": 1247,
-  "confidence": "high",
-  "computed_at": ISODate("2026-05-18T10:00:00Z"),
-  "source_years": [2023, 2024]
-}
+- Route dashboard: `client/src/app/(dashboard)/pathfinder/page.tsx`
+- Core container: `PathFinderAnalyzer`
+- API client: `client/src/lib/pathfinder/api.ts`
+
+Biến môi trường frontend thực tế:
+
+```env
+NEXT_PUBLIC_PATHFINDER_API_URL=http://localhost:4000
 ```
 
-### 6.2 Sample `career_trajectories` document (calibrated synthetic, anonymized)
+Nếu không khai báo, client fallback về `http://localhost:4000`.
 
-```json
-{
-  "_id": ObjectId("..."),
-  "anon_id": "a4f9b2e1c3d70658",
-  "source": "synthetic_vn",
-  "country": "Vietnam",
-  "current_role": "ML Engineer",
-  "total_years_exp": 5,
-  "comp_total_usd": 38000,
-  "ed_level": "Bachelors",
-  "snapshots": [
-    {
-      "estimated_year": 2019,
-      "role": "Backend Engineer (Java)",
-      "skills_have": ["Java", "Spring", "MySQL", "REST"],
-      "skills_want": ["Python", "Docker"],
-      "salary_band": "10-20tr"
-    },
-    {
-      "estimated_year": 2021,
-      "role": "Backend Engineer (Python)",
-      "skills_have": ["Java", "Python", "FastAPI", "Docker", "PostgreSQL"],
-      "skills_want": ["Kubernetes", "MLflow"],
-      "salary_band": "20-30tr"
-    },
-    {
-      "estimated_year": 2024,
-      "role": "ML Engineer",
-      "skills_have": ["Python", "PyTorch", "MLflow", "Kubernetes", "Vector DB"],
-      "skills_want": ["LLM Fine-tuning"],
-      "salary_band": "30-50tr"
-    }
-  ],
-  "pivots_detected": [
-    {
-      "from_role": "Backend Engineer (Java)",
-      "to_role": "Backend Engineer (Python)",
-      "skill_added": ["Python", "FastAPI"],
-      "months_taken": 14,
-      "salary_lift_pct": 25
-    },
-    {
-      "from_role": "Backend Engineer (Python)",
-      "to_role": "ML Engineer",
-      "skill_added": ["PyTorch", "MLflow", "Vector DB"],
-      "months_taken": 18,
-      "salary_lift_pct": 38
-    }
-  ]
-}
-```
+### 7.2 Form flow
 
-### 6.3 Sample `jobs` document (ITViec scrape)
+`AnalyzeForm` hỗ trợ:
 
-```json
-{
-  "_id": ObjectId("..."),
-  "source": "itviec",
-  "source_url": "https://itviec.com/it-jobs/senior-ml-engineer-vng-...",
-  "title": "Senior Machine Learning Engineer",
-  "company": "VNG",
-  "location": "HCM",
-  "level": "senior",
-  "salary_min": 35,
-  "salary_max": 55,
-  "salary_currency": "VND",
-  "required_skills": ["Python", "PyTorch", "MLflow", "Kubernetes", "Vector Search"],
-  "nice_to_have": ["MongoDB Atlas", "LangChain"],
-  "description": "We are seeking a Senior ML Engineer to lead our recommendation systems team...",
-  "description_embedding": [0.012, -0.043, 0.234, ...],
-  "posted_at": ISODate("2026-04-15T00:00:00Z"),
-  "scraped_at": ISODate("2026-05-17T08:00:00Z")
-}
-```
+- paste CV
+- 3 demo personas
+- free text target role
+- dropdown 12 role preset
+- validate CV `50..8000` ký tự
 
-### 6.4 Sample `users` document (transient, in-memory only)
+### 7.3 Result cards
 
-```json
-{
-  "_id": ObjectId("..."),
-  "display_name": "Demo: Java BE → MLE",
-  "current_role": "Backend Engineer (Java)",
-  "years_exp": 4,
-  "skills": [
-    { "name": "Java", "level": "advanced", "years": 4 },
-    { "name": "Spring", "level": "advanced", "years": 3.5 },
-    { "name": "MySQL", "level": "intermediate", "years": 3 }
-  ],
-  "cv_text": "Backend Engineer at FPT Software with 4 years...",
-  "cv_embedding": [...],
-  "target_role": "ML Engineer",
-  "target_embedding": [...],
-  "created_at": ISODate("2026-05-31T10:00:00Z"),
-  "ttl_expires_at": ISODate("2026-05-31T11:00:00Z")
-}
-```
+`AnalysisResults` render:
+
+1. Profile card
+2. Gap analysis
+3. Pivot paths
+4. Trajectory graph
+5. Proof drawer
+6. Similar devs
+7. Salary band
+8. Courses
+9. Timings
+
+### 7.4 Trajectory graph
+
+File: `trajectory-graph-card.tsx`
+
+- Dùng `@xyflow/react`
+- Có 3 lane: `fast`, `balanced`, `comprehensive`
+- Có edge labels:
+  - tháng học
+  - salary lift
+- Có pan, controls, minimap khi graph đủ lớn
+
+### 7.5 Honest Mode
+
+File: `honest-mode.tsx`
+
+Ngưỡng render thực tế:
+
+| N | UI |
+|---|---|
+| `N >= 30` | trustworthy |
+| `10 <= N < 30` | low confidence |
+| `N < 10` | insufficient data placeholder |
+
+Card còn hiển thị data source badge và aggregation stage badge để người xem thấy recommendation dựa trên kỹ thuật nào.
 
 ---
 
-## 7. Phụ lục
+## 8. ETL, index và reproducibility
 
-### A. Toàn bộ Vector Search index definitions
+### 8.1 Pipeline ETL
 
-```json
-// vec_jobs_desc
-{
-  "fields": [
-    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "level" },
-    { "type": "filter", "path": "location" },
-    { "type": "filter", "path": "salary_min" }
-  ]
-}
+Nguồn: `server/etl/README.md`
 
-// vec_skills_desc
-{
-  "fields": [
-    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "category" },
-    { "type": "filter", "path": "is_emerging" }
-  ]
-}
+| Bước | Script | Output |
+|---|---|---|
+| 1 | `01_generate_trajectories.py` | khoảng 3000 synthetic trajectory |
+| 2 | `02_scrape_itviec.py` | khoảng 20 job rows curated |
+| 3 | `03_load_skills_roadmap.py` | `skills` + `roadmap_edges` |
+| 4 | `04_load_courses.py` | khoảng 30 courses |
+| 5 | `05_embed_all.py` | embedding 768 chiều |
+| 6 | `06_create_indexes.py` | regular index + vector index |
+| 7 | `07_compute_transitions.py` | graph `skill_transitions` bằng `$out` |
 
-// vec_courses_desc
-{
-  "fields": [
-    { "type": "vector", "path": "description_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "level" },
-    { "type": "filter", "path": "is_mongodb_official" },
-    { "type": "filter", "path": "price_usd" }
-  ]
-}
+### 8.2 Dữ liệu synthetic
 
-// vec_trajectory_snapshot (optional, P1)
-{
-  "fields": [
-    { "type": "vector", "path": "snapshots.cv_embedding", "numDimensions": 768, "similarity": "cosine" },
-    { "type": "filter", "path": "country" },
-    { "type": "filter", "path": "total_years_exp" }
-  ]
-}
+`01_generate_trajectories.py` tạo cohort có:
+
+- seed cố định `42`
+- explicit pivot events
+- role mix và salary band được cân chỉnh theo market signal
+- mục tiêu chính là deterministic demo và pipeline correctness
+
+Đây không phải dữ liệu người dùng thật. Tài liệu và UI phải tiếp tục ghi rõ provenance này.
+
+### 8.3 Embedding pipeline
+
+`05_embed_all.py`:
+
+- dùng `text-embedding-3-small`
+- ép chiều về `768`
+- có fallback deterministic hash vector khi quota/rate-limit lỗi
+
+Fallback hash chỉ giữ đúng shape index, không có semantic meaning thật. Nếu dùng fallback trong quá trình seed, cần rerun step 5 khi quota OpenAI ổn định để thay bằng embedding thật.
+
+### 8.4 Index strategy
+
+Regular index đáng chú ý:
+
+- `skills.name` unique
+- `jobs.required_skills`
+- `jobs(level, location)`
+- `career_trajectories(country, total_years_exp)`
+- `career_trajectories.current_role`
+- `career_trajectories.snapshots.skills_have`
+- `skill_transitions(from_skill, to_skill)` unique
+- `roadmap_edges(roadmap_slug, source_node_id)`
+- `users.ttl_expires_at`
+
+Vector index definitions:
+
+| Index | Collection | Vector path | Runtime hiện tại |
+|---|---|---|---|
+| `vec_skills_desc` | `skills` | `description_embedding` | Có |
+| `vec_courses_desc` | `courses` | `description_embedding` | Có |
+| `vec_trajectory_snapshot` | `career_trajectories` | `snapshots.cv_embedding` | Có đường chạy, seed hiện rơi về fallback |
+| `vec_jobs_desc` | `jobs` | `description_embedding` | Đã định nghĩa, chưa là đường runtime chính |
+
+Trên Atlas M0/M2/M5, giới hạn index khiến script ưu tiên tạo:
+
+1. skills
+2. courses
+3. trajectories
+4. jobs
+
+### 8.5 Chạy lại local
+
+```bash
+# server
+cd server
+npm install
+npm run etl:install
+npm run etl:all
+npm run dev
+
+# client
+cd ../client
+npm install
+npm run dev
 ```
 
-### B. Repository structure (monorepo 2-service)
+URL local:
 
-```
+- frontend: `http://localhost:3000/pathfinder`
+- backend: `http://localhost:4000`
+- Swagger UI: `http://localhost:4000/docs`
+
+---
+
+## 9. Hiệu năng, độ tin cậy và giới hạn hiện tại
+
+### 9.1 Mục tiêu thiết kế
+
+| Hạng mục | Mục tiêu |
+|---|---|
+| Vector search top-K | `< 800 ms` |
+| Full `/api/analyze` | `< 4 s` P95 |
+| Server connection pool | `maxPoolSize = 5` |
+| Embedding dimension | `768` |
+
+Các con số trên là **target kỹ thuật**, chưa phải benchmark được commit vào repo.
+
+### 9.2 Tối ưu hiện có
+
+- `Promise.all` theo 2 phase để giảm tổng latency.
+- `skill_transitions` precompute offline thay vì tính runtime.
+- Rich target prompts giúp target embedding bám đúng stack hơn bare title.
+- `embedBatch` cho top missing skills.
+- Vector search có pre-filter.
+- Runtime server stateless.
+
+### 9.3 Giới hạn hiện tại
+
+| Giới hạn | Tác động |
+|---|---|
+| Trajectory seed là synthetic | Không được trình bày như dữ liệu người dùng thật |
+| `snapshots.cv_embedding` chưa có trong seed hiện tại | Similar devs chủ yếu dùng fallback aggregation |
+| `median_lift_pct` đang tính bằng `$avg` | Tên trường chưa phản ánh đúng statistic tuyệt đối |
+| `users` collection chưa được orchestrator dùng | Không có session persistence runtime |
+| Chưa thấy test files được commit | Cần bổ sung coverage khi ổn định API |
+
+---
+
+## 10. ADR và quyết định kỹ thuật
+
+| ADR | Quyết định | Lý do |
+|---|---|---|
+| ADR-01 | Tách `client/` và `server/` | Deploy độc lập, trách nhiệm rõ |
+| ADR-02 | Chọn OpenAI thay vì Gemini | Code hiện tại đã chuẩn hóa quanh OpenAI SDK, JSON mode và embedding pipeline |
+| ADR-03 | Dùng 768-dim embedding | Giảm storage/index footprint nhưng vẫn giữ chất lượng đủ cho MVP |
+| ADR-04 | Precompute `skill_transitions` offline | Giảm latency runtime |
+| ADR-05 | Dùng synthetic calibrated trajectory | Deterministic, explicit pivots, dễ demo và kiểm soát |
+| ADR-06 | Giữ provenance trên dữ liệu và UI | Tránh recommendation mập mờ |
+| ADR-07 | Dùng Hono + Zod OpenAPI | Một nguồn cho validation, docs và type shape |
+| ADR-08 | Dùng role normalizer | Chặn mismatch giữa title tự do của LLM và label dataset |
+| ADR-09 | Dùng `@xyflow/react` | Có sẵn pan/zoom/minimap và custom node/edge |
+| ADR-10 | Orchestrator stateless | Dễ scale và giảm rủi ro privacy |
+
+---
+
+## 11. Cấu trúc repository
+
+```text
 pathfinder/
 ├── README.md
 ├── docs/
-│   ├── PRD.md                       # Product spec đầy đủ
-│   └── TECHNICAL_DOC.md             # Tài liệu này
-│
-├── client/                          # === Frontend (Next.js + shadcn) ===
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx             # Landing
-│   │   │   └── (dashboard)/
-│   │   │       └── dashboard/page.tsx
-│   │   ├── components/
-│   │   │   ├── CvInput.tsx
-│   │   │   ├── PathCard.tsx
-│   │   │   ├── TrajectoryGraph.tsx
-│   │   │   ├── ProofDrawer.tsx
-│   │   │   ├── SalaryBand.tsx
-│   │   │   └── ConfidenceBadge.tsx
-│   │   ├── lib/
-│   │   │   ├── api.ts               # fetch client gọi server
-│   │   │   └── utils.ts
-│   │   └── index.css
-│   ├── next.config.ts
-│   ├── components.json
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── server/                          # === Backend (Hono REST API) ===
-│   ├── src/
-│   │   ├── index.ts                 # Hono app entry
-│   │   ├── config/
-│   │   │   ├── env.ts               # Zod-validated env
-│   │   │   └── mongo.ts             # Mongo client singleton
-│   │   ├── routes/
-│   │   │   ├── health.ts
-│   │   │   ├── skills.ts            # /extract-skills + /embed
-│   │   │   ├── analysis.ts          # /gap-analysis
-│   │   │   ├── paths.ts             # /pivot-paths
-│   │   │   ├── proof.ts             # /proof-drawer
-│   │   │   ├── similar.ts           # /similar-devs
-│   │   │   ├── courses.ts           # /course-recommendations
-│   │   │   └── orchestrator.ts      # /analyze
-│   │   ├── services/
-│   │   │   ├── openai.ts                   # extractSkillsFromCV, embed, embedBatch
-│   │   │   ├── aggregations/
-│   │   │   │   ├── pivot-path.ts
-│   │   │   │   ├── proof-drawer.ts
-│   │   │   │   ├── salary-band.ts          # $facet jobs (VN VND range + companies)
-│   │   │   │   └── salary-inference.ts     # $group on pivots_detected
-│   │   │   └── vector-search/
-│   │   │       ├── skills.ts               # gap analysis (evidence + semantic)
-│   │   │       ├── courses.ts              # hybrid filter + rank
-│   │   │       └── similar-devs.ts         # $vectorSearch + skill-overlap fallback
-│   │   ├── schemas/                 # Zod (single source of truth)
-│   │   │   ├── user.ts
-│   │   │   ├── job.ts
-│   │   │   ├── skill.ts
-│   │   │   ├── course.ts
-│   │   │   ├── trajectory.ts
-│   │   │   ├── transition.ts
-│   │   │   └── index.ts
-│   │   ├── middleware/
-│   │   │   └── error.ts
-│   │   └── lib/
-│   │       ├── logger.ts            # pino
-│   │       └── errors.ts
-│   ├── etl/                         # Python offline scripts
-│   │   ├── 01_generate_trajectories.py   # synthetic SEA cohort, seed=42
-│   │   ├── 02_scrape_itviec.py           # curated VN JDs (extensible)
-│   │   ├── 03_load_skills_roadmap.py     # roadmap.sh JSON
-│   │   ├── 04_load_courses.py            # curated course catalog (~30 docs)
-│   │   ├── 05_embed_all.py               # OpenAI text-embedding-3-small
-│   │   ├── 06_create_indexes.py          # Atlas Vector Search + regular
-│   │   ├── 07_compute_transitions.py     # aggregation $out
-│   │   ├── _common.py
-│   │   ├── requirements.txt
-│   │   └── README.md
-│   ├── tests/
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── .env.example
-│   └── README.md
-│
-└── data/                            # gitignored — optional raw data drop
-    └── itviec_sample.json           # override curated jobs sample (optional)
+│   ├── PRD.md
+│   └── TECHNICAL_DOC.md
+├── client/
+│   └── src/
+│       ├── app/(dashboard)/pathfinder/
+│       ├── components/
+│       ├── contexts/
+│       └── lib/pathfinder/
+└── server/
+    ├── src/
+    │   ├── config/
+    │   ├── routes/
+    │   ├── services/
+    │   │   ├── aggregations/
+    │   │   └── vector-search/
+    │   ├── schemas/
+    │   ├── middleware/
+    │   └── lib/
+    └── etl/
 ```
 
-### C. Environment variables
+Các file đáng đọc nhất để hiểu hệ thống:
 
-**`server/.env`** (gitignored):
+- `server/src/routes/orchestrator.ts`
+- `server/src/services/vector-search/skills.ts`
+- `server/src/services/aggregations/pivot-path.ts`
+- `server/src/services/aggregations/proof-drawer.ts`
+- `server/src/services/aggregations/salary-band.ts`
+- `client/src/app/(dashboard)/pathfinder/components/analysis-results.tsx`
+- `server/etl/README.md`
+
+---
+
+## 12. Phụ lục
+
+### 12.1 Environment variables
+
+#### `server/.env`
 
 ```env
 NODE_ENV=development
 PORT=4000
 LOG_LEVEL=info
 
-MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net
+MONGODB_URI=mongodb+srv://...
 MONGODB_DB=pathfinder
 
-OPENAI_API_KEY=<your_openai_key>
+OPENAI_API_KEY=...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_LLM_MODEL=gpt-4o-mini
 
-CORS_ORIGINS=http://localhost:3000,https://pathfinder-vn.vercel.app
+CORS_ORIGINS=http://localhost:3000
+
+VECTOR_INDEX_SKILLS=vec_skills_desc
+VECTOR_INDEX_COURSES=vec_courses_desc
+VECTOR_INDEX_JOBS=vec_jobs_desc
+VECTOR_INDEX_TRAJECTORIES=vec_trajectory_snapshot
+RATE_LIMIT_PER_MINUTE=60
 ```
 
-**`client/.env.local`** (gitignored):
+#### `client/.env.local`
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
+NEXT_PUBLIC_PATHFINDER_API_URL=http://localhost:4000
 ```
 
-### D. Reproducibility
+### 12.2 Ví dụ `skill_transitions`
 
-Để BGK chạy lại trên máy:
-
-```bash
-# 1. Clone monorepo
-git clone https://github.com/trahoangdev/path-finder.git
-cd pathfinder
-
-# 2. Setup server
-cd server
-cp .env.example .env
-# fill MONGODB_URI, OPENAI_API_KEY
-npm install
-
-# 3. ETL (1 lần, ~30 phút) — chạy trong server/etl/
-cd etl
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python 01_generate_trajectories.py                 # ~3000 synthetic SEA devs (seed=42)
-python 02_scrape_itviec.py                         # curated VN jobs (override via data/itviec_sample.json)
-python 03_load_skills_roadmap.py                   # roadmap.sh skill taxonomy
-python 04_load_courses.py                          # curated course catalogue
-python 05_embed_all.py                             # OpenAI text-embedding-3-small (3-8 min)
-python 06_create_indexes.py                        # Atlas Vector Search + regular indexes
-python 07_compute_transitions.py                   # pre-compute skill_transitions
-cd ..
-
-# Hoặc chạy gọn từ thư mục server/ bằng wrapper npm script:
-# npm run etl:all  →  thực thi 01 → 07 tuần tự, in tiến độ.
-
-# 4. Run server (Terminal 1)
-npm run dev                                        # → http://localhost:4000
-# Mở Swagger: http://localhost:4000/docs
-
-# 5. Setup + run client (Terminal 2)
-cd ../client
-cp .env.local.example .env.local
-pmpn install
-npm run dev                                        # → http://localhost:3000
+```json
+{
+  "from_skill": "PyTorch",
+  "to_skill": "ML Engineer",
+  "frequency": 124,
+  "avg_months": 11.2,
+  "median_months": 11.2,
+  "avg_salary_lift_pct": 0.28,
+  "role_change_rate": 0.5,
+  "sample_size": 124,
+  "confidence": "high"
+}
 ```
 
-### E. Open source licenses
+### 12.3 Ví dụ `AnalyzeResponse`
 
-- Code: MIT License
-- Synthetic trajectory data: original, generated deterministically — free to use
-- Roadmap.sh JSON: MIT License
-- ITViec scrape (if enabled): dùng cho mục đích nghiên cứu hackathon, không redistribute
+```json
+{
+  "profile": {
+    "skills": [
+      { "name": "Java", "level": "advanced", "years": 4 }
+    ],
+    "inferred_role": "Backend Engineer",
+    "inferred_years": 4
+  },
+  "gap_analysis": {
+    "missing_skills": []
+  },
+  "pivot_paths": {
+    "paths": []
+  },
+  "proof_drawer": {
+    "sample_size": 0,
+    "conversion_rate": 0,
+    "salary_stats": {
+      "median_lift_pct": 0,
+      "min_lift_pct": 0,
+      "max_lift_pct": 0,
+      "avg_months": 0
+    },
+    "example_profiles": [],
+    "confidence": "low",
+    "data_sources": []
+  }
+}
+```
 
-### F. References
 
-| Resource | URL |
-|----------|-----|
-| Stack Overflow Developer Survey 2024 (reference for calibration) | https://survey.stackoverflow.co/2024/ |
-| MongoDB Atlas Vector Search Docs | https://www.mongodb.com/docs/atlas/atlas-vector-search/ |
-| MongoDB `$graphLookup` Docs | https://www.mongodb.com/docs/manual/reference/operator/aggregation/graphLookup/ |
-| MongoDB `$facet` Docs | https://www.mongodb.com/docs/manual/reference/operator/aggregation/facet/ |
-| OpenAI API · Embeddings | https://platform.openai.com/docs/guides/embeddings |
-| OpenAI · Structured outputs (gpt-4o-mini) | https://platform.openai.com/docs/guides/structured-outputs |
-| Next.js App Router | https://nextjs.org/docs/app |
-| @xyflow/react (React Flow) | https://reactflow.dev/ |
-| roadmap.sh GitHub | https://github.com/kamranahmedse/developer-roadmap |
-| MUGVN Hackathon 2026 | https://mini-hackathon-2026.mugvn.com/ |
-
-### G. Contact
-
-**Author:** Hoàng Trọng Trà
-
-**Email:** *trahoangdev@gmail.com*
-
-**GitHub:** https://github.com/trahoangdev
-
-**Submitted via:** https://forms.gle/uV87nmr1XX712aAx9
-
----
-
-**End of Technical Document v1.0**
-
-> *"Don't recommend jobs. Recommend the next skill that unlocks them — from real career trajectories."*
+**End of Technical Document v2.0**

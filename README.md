@@ -1,6 +1,6 @@
 # PathFinder
 
-> **AI Career Coach for Vietnamese developers.** Tells you the next skill that unlocks the role you actually want — based on real career trajectory data, MongoDB Atlas Vector Search, and Aggregation Pipelines.
+> **AI Career Coach for Vietnamese developers.** Tells you the next skill that unlocks the role you actually want, using calibrated synthetic career trajectories, curated VN job data, MongoDB Atlas Vector Search, and Aggregation Pipelines.
 
 | | |
 |---|---|
@@ -19,12 +19,12 @@ Around **200,000 Vietnamese developers** aged 25–35 are mid career-crisis as t
 - **roadmap.sh** — static, not personalized, no VN salary signal.
 - **ChatGPT** — hallucinates, no verifiable evidence, no trajectory data.
 
-PathFinder answers three questions, every recommendation backed by real data:
+PathFinder answers three questions, with each recommendation grounded in explicit data provenance:
 
 | Question | How we answer it | MongoDB feature |
 |----------|------------------|-----------------|
 | *"What skills am I missing to land the target role?"* | Vector search the skill taxonomy against a target-role embedding + cross-reference with `skill_transitions` evidence | **Atlas Vector Search** |
-| *"What's the shortest path from where I am to where I want to be?"* | Recursive graph traversal over a pre-computed skill graph + edge-only fallback | **`$graphLookup`** |
+| *"What's the shortest path from where I am to where I want to be?"* | Recursive graph traversal over a pre-computed `role → skill → skill → role` graph | **`$graphLookup`** |
 | *"Has anyone actually pulled this off? What did it pay?"* | Single `$facet` over career trajectories returns N, conversion %, salary lift, examples | **Aggregation `$facet`** |
 
 All cards on the dashboard carry an **Honest Mode** badge: trustworthy when `N ≥ 30`, low confidence between `10..30`, fully hidden when `N < 10`. Recommendations refuse to guess.
@@ -38,8 +38,7 @@ pathfinder/
 ├── README.md                          ← you are here
 ├── docs/
 │   ├── PRD.md                         Full product spec (VN)
-│   ├── TECHNICAL_DOC.md               Architecture + data schemas + use cases
-│   └── ITViec.md, RoadMap.md, …       Reference notes
+│   └── TECHNICAL_DOC.md               Architecture + data schemas + MongoDB use cases
 ├── client/                            Next.js 16 + shadcn/ui dashboard
 ├── server/                            Hono REST API + Mongo aggregations
 │   ├── src/                           routes · services · schemas
@@ -77,7 +76,7 @@ OPENAI_API_KEY="sk-..."
 
 ```bash
 # client/.env.local
-NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
+NEXT_PUBLIC_PATHFINDER_API_URL=http://localhost:4000
 ```
 
 ### 3. Seed MongoDB (run once)
@@ -98,7 +97,7 @@ Pipeline summary (see `server/etl/README.md` for the long version):
 | 04 | `04_load_courses.py` | ~30 curated courses → `courses` |
 | 05 | `05_embed_all.py` | OpenAI `text-embedding-3-small` (768-dim Matryoshka) for skills / courses / jobs |
 | 06 | `06_create_indexes.py` | Regular indexes + Atlas Vector Search indexes |
-| 07 | `07_compute_transitions.py` | Pre-compute `skill_transitions` via aggregation `$out` |
+| 07 | `07_compute_transitions.py` | Pre-compute traversable `skill_transitions` graph via aggregation `$out` |
 
 ### 4. Run both services
 
@@ -118,7 +117,7 @@ Open <http://localhost:3000/pathfinder>, click one of the three demo personas (K
 ```
 Phase 1 (parallel)
   ┌─ gapAnalysis        — vector search skills + evidence join from skill_transitions
-  ├─ pivotPaths         — $graphLookup + edge-only fallback, 3 flavors
+  ├─ pivotPaths         — $graphLookup over a traversable graph, 3 flavors
   ├─ proofDrawer        — $facet on career_trajectories (sample · conversion · salary)
   └─ similarDevs        — $vectorSearch on snapshots OR skill-overlap aggregation fallback
 
@@ -171,7 +170,7 @@ Every card also surfaces its **data sources** — `synthetic_vn_cohort`, `itviec
 | [`server/etl/README.md`](./server/etl/README.md) | Per-script ETL details · embedding dimensions · index definitions |
 | [`client/README.md`](./client/README.md) | Frontend project notes (Next.js + shadcn/ui template baseline) |
 
-The judge submission checklist (data schema, MongoDB techniques, Vector Search & Aggregation Pipeline usage) is fully covered by `docs/TECHNICAL_DOC.md` §3–4.
+The judge submission checklist (data schema, MongoDB techniques, Vector Search & Aggregation Pipeline usage) is covered by `docs/TECHNICAL_DOC.md` §4–5.
 
 ---
 
@@ -181,4 +180,4 @@ Source code: MIT. Synthetic trajectory data: original, deterministic — free to
 
 ---
 
-> *"Don't recommend jobs. Recommend the next skill that unlocks them — from real career trajectories."*
+> *"Don't recommend jobs. Recommend the next skill that unlocks them — from evidence-bearing career trajectories."*
