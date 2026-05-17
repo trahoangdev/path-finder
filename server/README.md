@@ -130,4 +130,4 @@ Health check endpoint: `GET /health` → returns `{ status: "ok" }` when DB + AI
 
 ## License
 
-MIT (post-hackathon).
+Project source code is licensed under the root [MIT License](../LICENSE).

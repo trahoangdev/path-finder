@@ -103,3 +103,7 @@ Các file nên đọc trước:
 ## Ghi chú
 
 Client chỉ giữ state phía browser và gọi REST API từ `server/`; toàn bộ recommendation logic nằm ở backend.
+
+## License
+
+PathFinder source code dùng license MIT ở root repository. Phần template frontend kế thừa vẫn giữ notice gốc trong [`License.md`](./License.md).
