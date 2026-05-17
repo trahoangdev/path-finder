@@ -176,7 +176,7 @@ The judge submission checklist (data schema, MongoDB techniques, Vector Search &
 
 ## License
 
-Source code: MIT. Synthetic trajectory data: original, deterministic — free to use. roadmap.sh JSON: MIT. ITViec scraped JDs: research-use only, not redistributed.
+Project source code is licensed under the [MIT License](./LICENSE). The frontend template keeps its original notice in [`client/License.md`](./client/License.md). Synthetic trajectory data is original and deterministic. roadmap.sh JSON remains MIT-licensed. ITViec scraped JDs are for research/demo use only and are not redistributed.
 
 ---
 
