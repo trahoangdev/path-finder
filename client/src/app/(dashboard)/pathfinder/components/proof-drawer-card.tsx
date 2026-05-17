@@ -13,11 +13,14 @@ import { Separator } from "@/components/ui/separator";
 import { useTranslations } from "@/contexts/locale-context";
 import type { ProofDrawerResponse } from "@/lib/pathfinder/types";
 import {
+  AggregationPipelineBadges,
   DataSourceBadges,
   HONEST_THRESHOLDS,
   HonestModeBadge,
   InsufficientDataPlaceholder,
 } from "./honest-mode";
+
+const PROOF_AGG_STAGES = ["match", "facet", "group"] as const;
 
 interface ProofDrawerCardProps {
   data: ProofDrawerResponse;
@@ -40,6 +43,7 @@ export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.proof.subtitle")}
         </p>
+        <AggregationPipelineBadges stages={PROOF_AGG_STAGES} className="pt-1" />
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {hide ? (

@@ -68,9 +68,11 @@ export const messages = {
       pipelineTitle: "What runs server-side",
       pipelineExtract: "extract skills, role, years from CV",
       pipelineEmbed: "768-dim vector of CV + target role",
-      pipelineAtlas: "gap, similar devs, course matching",
-      pipelineGraph: "recursive pivot paths",
-      pipelineFacet: "proof drawer in one round-trip",
+      pipelineAtlas: "$vectorSearch — skills / courses / trajectories (gap, courses, similar devs)",
+      pipelineAggregation:
+        "$facet · $match · $group · $lookup (+ optional $graphLookup when the graph has edges) — proof, JD salary band, pivot paths, evidence branch in gap",
+      pipelineGraph: "pivot paths (aggregation + optional $graphLookup)",
+      pipelineFacet: "proof drawer: single $facet, four stat branches",
       running: "Running pipeline…",
       runAnalysis: "Run analysis",
       cvLengthError: "CV must be 50–8000 characters. Currently {count}.",
@@ -85,7 +87,7 @@ export const messages = {
       step2Body: "e.g. AI Engineer, Cloud Engineer, Engineering Manager.",
       step3Title: "One orchestrated call",
       step3Body:
-        "OpenAI extracts skills, MongoDB Atlas runs Vector Search + $graphLookup + $facet in parallel.",
+        "OpenAI extracts skills; MongoDB runs Vector Search ($vectorSearch) and Aggregation ($facet, $lookup, $group) across collections in parallel.",
       step4Title: "Read the plan",
       step4Body:
         "Profile, gap, three pivot routes, proof of past pivoters, and peer cluster.",
@@ -104,6 +106,12 @@ export const messages = {
       skillsExtracted: "{count} skills extracted",
       noSkills: "No skills extracted — try a longer CV.",
     },
+    aggregation: {
+      label: "Aggregation pipeline",
+      title: "MongoDB aggregation stages powering this card (see server/src/services).",
+      gapHint:
+        "Two pipelines in parallel: evidence ($match/$lookup on skill_transitions → skills) and semantic ($vectorSearch + $lookup on skills); results merged server-side.",
+    },
     gap: {
       description: "Gap analysis",
       title: "Missing skills between you and the target role",
@@ -120,7 +128,7 @@ export const messages = {
       description: "Pivot paths",
       title: "Three routes from your stack to the target",
       subtitle:
-        "Computed by MongoDB's $graphLookup over the pre-computed skill_transitions graph.",
+        "Three flavors from skill_transitions (ETL 07), aggregated from ~3,000 synthetic career_trajectories.",
       noPath:
         "No path found for this flavor — graph is sparse for this direction.",
       steps: "Steps",
@@ -135,7 +143,7 @@ export const messages = {
         "No reachable paths in the skill-transitions graph yet — try a more populated source skill or seed more trajectories via the ETL.",
       title: "Three routes laid out side-by-side",
       subtitle:
-        "Each lane is a separate $graphLookup discovery. Pan & zoom, fit-to-view from the bottom-left controls. Edge labels show average months + salary lift from cohort data.",
+        "Same data as the pivot card — one swimlane per flavor (Fast / Balanced / Comprehensive). Edge labels = months + salary lift from the synthetic cohort.",
     },
     proof: {
       description: "Proof drawer",
@@ -212,7 +220,8 @@ export const messages = {
     timings: {
       description: "Pipeline timings",
       title: "Total {total} ms server-side",
-      subtitle: "Per-stage latency. Gap, paths, proof and similar devs run in parallel.",
+      subtitle:
+        "Per-stage latency. Gap, pivot paths, proof drawer, and similar devs run in parallel; then courses and salary.",
       extract: "extract skills",
       embed: "embed",
       gap: "gap analysis",

@@ -204,9 +204,15 @@ export function AnalyzeForm({ loading, onSubmit, onReset }: AnalyzeFormProps) {
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">
-                    Atlas Vector Search
+                    $vectorSearch
                   </Badge>{" "}
                   {t("pathfinder.form.pipelineAtlas")}
+                </li>
+                <li>
+                  <Badge variant="secondary" className="font-mono">
+                    Aggregation
+                  </Badge>{" "}
+                  {t("pathfinder.form.pipelineAggregation")}
                 </li>
                 <li>
                   <Badge variant="secondary" className="font-mono">

@@ -11,11 +11,23 @@ import {
 import { useTranslations } from "@/contexts/locale-context";
 import type { SimilarDevsGroup } from "@/lib/pathfinder/types";
 import {
+  AggregationPipelineBadges,
   DataSourceBadges,
   HONEST_THRESHOLDS,
   HonestModeBadge,
   InsufficientDataPlaceholder,
 } from "./honest-mode";
+
+/** Primary + fallback paths in `server/src/services/vector-search/similar-devs.ts`. */
+const SIMILAR_AGG_STAGES = [
+  "vectorSearch",
+  "match",
+  "addFields",
+  "group",
+  "project",
+  "sort",
+  "limit",
+] as const;
 
 interface SimilarDevsCardProps {
   groups: SimilarDevsGroup[];
@@ -45,6 +57,10 @@ export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.similar.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          className="pt-1"
+          stages={SIMILAR_AGG_STAGES}
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">

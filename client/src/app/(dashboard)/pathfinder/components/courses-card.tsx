@@ -25,6 +25,16 @@ import {
 } from "@/components/ui/collapsible";
 import { useTranslations } from "@/contexts/locale-context";
 import type { CoursePublic, CoursesForSkill } from "@/lib/pathfinder/types";
+import { AggregationPipelineBadges } from "./honest-mode";
+
+/** Stages in `server/src/services/vector-search/courses.ts`. */
+const COURSES_AGG_STAGES = [
+  "vectorSearch",
+  "addFields",
+  "sort",
+  "limit",
+  "project",
+] as const;
 
 interface CoursesCardProps {
   groups: CoursesForSkill[];
@@ -60,6 +70,10 @@ export function CoursesCard({ groups }: CoursesCardProps) {
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.courses.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          className="pt-1"
+          stages={COURSES_AGG_STAGES}
+        />
       </CardHeader>
       <CardContent>
         {groups.length === 0 ? (

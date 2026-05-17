@@ -70,7 +70,7 @@ const route = createRoute({
   description: `One-shot pipeline:
 1. Extract skills + role + years from CV (LLM).
 2. Embed CV text and target role description.
-3. In parallel: gap analysis, pivot paths, proof drawer, similar devs.
+3. In parallel: gap analysis, pivot paths, proof drawer, similar developers.
 4. Aggregate timings + return combined payload for the dashboard.`,
   request: {
     body: { content: { 'application/json': { schema: AnalyzeRequestSchema } } },

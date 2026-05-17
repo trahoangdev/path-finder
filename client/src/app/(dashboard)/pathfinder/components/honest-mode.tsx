@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Database, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Database, Layers, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "@/contexts/locale-context";
 
@@ -89,6 +89,44 @@ export function DataSourceBadges({ sources, className }: DataSourceBadgesProps) 
           className="font-mono text-[10px] tracking-tight"
         >
           {s}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+export interface AggregationPipelineBadgesProps {
+  /** MongoDB aggregation stage names (without the leading $). */
+  stages: readonly string[];
+  className?: string;
+}
+
+/**
+ * Visual “evidence” that a card is backed by MongoDB Aggregation Pipeline stages
+ * ($facet, $group, $lookup, …) — not only Vector Search.
+ */
+export function AggregationPipelineBadges({
+  stages,
+  className,
+}: AggregationPipelineBadgesProps) {
+  const t = useTranslations();
+  if (stages.length === 0) return null;
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}
+      title={t("pathfinder.aggregation.title")}
+    >
+      <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <Layers className="size-3" />
+        {t("pathfinder.aggregation.label")}
+      </span>
+      {stages.map((stage) => (
+        <Badge
+          key={stage}
+          variant="outline"
+          className="border-sky-500/35 bg-sky-500/10 font-mono text-[10px] text-sky-900 dark:text-sky-100"
+        >
+          ${stage}
         </Badge>
       ))}
     </div>

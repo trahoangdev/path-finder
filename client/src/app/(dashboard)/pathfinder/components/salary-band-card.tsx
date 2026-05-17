@@ -22,7 +22,21 @@ import type {
   SalaryBandReport,
 } from "@/lib/pathfinder/types";
 import { useTranslations } from "@/contexts/locale-context";
-import { DataSourceBadges, HonestModeBadge } from "./honest-mode";
+import {
+  AggregationPipelineBadges,
+  DataSourceBadges,
+  HonestModeBadge,
+} from "./honest-mode";
+
+/** Top-level stages in `server/src/services/aggregations/salary-band.ts`. */
+const SALARY_AGG_STAGES = [
+  "match",
+  "facet",
+  "group",
+  "unwind",
+  "sort",
+  "limit",
+] as const;
 
 interface SalaryBandCardProps {
   data: SalaryBandReport;
@@ -43,6 +57,10 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
             <Banknote className="size-4 text-primary" />
             {t("pathfinder.salary.marketFor", { role: data.target_role })}
           </CardTitle>
+          <AggregationPipelineBadges
+            className="pt-1"
+            stages={SALARY_AGG_STAGES}
+          />
         </CardHeader>
         <CardContent>
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -74,6 +92,10 @@ export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.salary.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          className="pt-1"
+          stages={SALARY_AGG_STAGES}
+        />
       </CardHeader>
 
       <CardContent className="flex flex-col gap-5">

@@ -5,6 +5,7 @@ import type {
   CareerTrajectoryDoc,
   CourseDoc,
   JobDoc,
+  RoadmapEdgeDoc,
   SkillDoc,
   SkillTransitionDoc,
   UserSessionDoc,
@@ -16,7 +17,7 @@ let db: Db | null = null;
 export async function connectMongo(): Promise<Db> {
   if (db) return db;
 
-  logger.info({ db: env.MONGODB_DB }, 'Connecting to MongoDB Atlas…');
+  logger.info({ db: env.MONGODB_DB }, 'Connecting to MongoDB Atlas...');
 
   client = new MongoClient(env.MONGODB_URI, {
     maxPoolSize: 5,
@@ -29,7 +30,7 @@ export async function connectMongo(): Promise<Db> {
   db = client.db(env.MONGODB_DB);
 
   await db.command({ ping: 1 });
-  logger.info('✓ MongoDB connected');
+  logger.info('MongoDB connected!');
 
   return db;
 }
@@ -57,6 +58,7 @@ export const collections = {
   courses: () => getDb().collection<CourseDoc>('courses'),
   careerTrajectories: () => getDb().collection<CareerTrajectoryDoc>('career_trajectories'),
   skillTransitions: () => getDb().collection<SkillTransitionDoc>('skill_transitions'),
+  roadmapEdges: () => getDb().collection<RoadmapEdgeDoc>('roadmap_edges'),
 } as const;
 
 export type CollectionsMap = {
@@ -66,6 +68,7 @@ export type CollectionsMap = {
   courses: Collection<CourseDoc>;
   careerTrajectories: Collection<CareerTrajectoryDoc>;
   skillTransitions: Collection<SkillTransitionDoc>;
+  roadmapEdges: Collection<RoadmapEdgeDoc>;
 };
 
 export async function isMongoHealthy(): Promise<boolean> {

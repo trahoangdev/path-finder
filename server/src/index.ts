@@ -83,7 +83,7 @@ app.doc('/openapi.json', {
       'Powered by MongoDB Atlas Vector Search + Aggregation Pipeline + OpenAI.',
     contact: {
       name: 'Hoàng Trọng Trà',
-      url: 'https://github.com/htra/pathfinder',
+      url: 'https://github.com/trahoangdev/path-finder',
     },
     license: { name: 'MIT' },
   },
@@ -136,9 +136,9 @@ async function start(): Promise<void> {
         env: env.NODE_ENV,
         cors: env.CORS_ORIGINS,
       },
-      `✓ pathfinder-server listening on http://localhost:${info.port}`,
+      `pathfinder-server listening on http://localhost:${info.port}`,
     );
-    logger.info(`✓ Swagger UI: http://localhost:${info.port}/docs`);
+    logger.info(`Swagger UI: http://localhost:${info.port}/docs`);
   });
 }
 

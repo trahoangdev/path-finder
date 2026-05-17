@@ -13,7 +13,19 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTranslations } from "@/contexts/locale-context";
 import type { PivotPath } from "@/lib/pathfinder/types";
-import { DataSourceBadges } from "./honest-mode";
+import {
+  AggregationPipelineBadges,
+  DataSourceBadges,
+} from "./honest-mode";
+
+/** Stages in `server/src/services/aggregations/pivot-path.ts` (+ optional $graphLookup). */
+const PIVOT_AGG_STAGES = [
+  "match",
+  "project",
+  "sort",
+  "limit",
+  "graphLookup",
+] as const;
 
 interface PivotPathsCardProps {
   paths: PivotPath[];
@@ -52,6 +64,10 @@ export function PivotPathsCard({ paths }: PivotPathsCardProps) {
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.pivot.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          className="pt-1"
+          stages={PIVOT_AGG_STAGES}
+        />
         <DataSourceBadges
           className="pt-1"
           sources={["skill_transitions", "synthetic_vn_cohort"]}

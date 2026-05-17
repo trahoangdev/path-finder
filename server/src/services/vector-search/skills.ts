@@ -142,7 +142,7 @@ async function evidenceGap(targetRole: string, limit: number): Promise<MissingSk
       r.skill_info?.description ??
       `${r.from_skill} — a skill that ${r.frequency ?? 0} devs added to pivot into ${targetRole}.`,
     similarity: 0.5 + 0.5 * Math.log10((r.frequency ?? 1) + 1) / Math.log10(maxFreq + 1),
-    vn_demand_score: r.skill_info?.vn_demand_score ?? 50,
+    vn_demand_score: r.skill_info?.vn_demand_score ?? 0,
     transition: {
       avg_months: r.avg_months,
       avg_salary_lift_pct: (r.avg_salary_lift_pct ?? 0) * liftScale,

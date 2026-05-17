@@ -28,8 +28,8 @@ export OPENAI_API_KEY="sk-..."
 | Step | Script | Purpose | Time |
 |------|--------|---------|------|
 | 1 | `01_generate_trajectories.py` | Generate ~3000 synthetic SEA dev career trajectories with explicit pivots → `career_trajectories` | ~5 s |
-| 2 | `02_scrape_itviec.py` | Load ~20 curated VN job listings → `jobs` (override via `data/itviec_sample.json`) | ~2 s |
-| 3 | `03_load_skills_roadmap.py` | Fetch roadmap.sh role roadmaps → `skills` taxonomy | ~30 s |
+| 2 | `02_scrape_itviec.py` | ~20 curated VN job rows → `jobs` (URLs to ITViec search if legacy `/jobs/` placeholders; override via `data/itviec_sample.json`) | ~2 s |
+| 3 | `03_load_skills_roadmap.py` | Fetch roadmap.sh (`/api/v1-official-roadmap/<slug>` + `.json` fallback) → `skills` + `roadmap_edges` | ~30–60 s |
 | 4 | `04_load_courses.py` | Load ~30 curated courses (MongoDB University + Coursera/Udemy/freeCodeCamp) → `courses` | ~2 s |
 | 5 | `05_embed_all.py` | Generate 768-d vectors (`text-embedding-3-small` w/ `dimensions=768`; falls back to deterministic hash if quota / rate-limit hit) | ~2–30 min |
 | 6 | `06_create_indexes.py` | Create regular indexes + Atlas Vector Search indexes | ~1-2 min |
@@ -89,7 +89,8 @@ After completion, MongoDB Atlas has roughly:
 
 | Collection | Docs |
 |------------|-----:|
-| `skills` | ~200 (roadmap.sh) |
+| `skills` | ~1–2k (roadmap.sh nodes, deduped by label) |
+| `roadmap_edges` | ~500–2k (directed edges per slug) |
 | `courses` | ~30 |
 | `jobs` | ~20 |
 | `career_trajectories` | ~3000 |
@@ -114,7 +115,7 @@ then `insert_many()`):
 
 - `01_generate_trajectories.py` — replaces `career_trajectories`
 - `02_scrape_itviec.py` — replaces `jobs`
-- `03_load_skills_roadmap.py` — replaces `skills`
+- `03_load_skills_roadmap.py` — replaces `skills` and `roadmap_edges`
 - `04_load_courses.py` — replaces `courses`
 - `07_compute_transitions.py` — uses `$out` → replaces `skill_transitions`
 

@@ -13,6 +13,17 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { useTranslations } from "@/contexts/locale-context";
 import type { MissingSkill } from "@/lib/pathfinder/types";
+import { AggregationPipelineBadges } from "./honest-mode";
+
+const GAP_AGG_STAGES = [
+  "match",
+  "lookup",
+  "sort",
+  "limit",
+  "vectorSearch",
+  "addFields",
+  "project",
+] as const;
 
 interface GapAnalysisCardProps {
   skills: MissingSkill[];
@@ -37,6 +48,11 @@ export function GapAnalysisCard({ skills }: GapAnalysisCardProps) {
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.gap.subtitle")}
         </p>
+        <AggregationPipelineBadges
+          stages={GAP_AGG_STAGES}
+          className="pt-1"
+        />
+        <p className="text-xs text-muted-foreground">{t("pathfinder.aggregation.gapHint")}</p>
       </CardHeader>
       <CardContent>
         {top.length === 0 ? (
@@ -120,10 +136,16 @@ function Stat({
   );
 }
 
+/** `skills.vn_demand_score` is stored 0..1 (see server schema); show as 0..100 in UI. */
+function demandPercent(raw: number): number {
+  if (!Number.isFinite(raw)) return 0;
+  if (raw > 1) return Math.max(0, Math.min(100, Math.round(raw)));
+  return Math.max(0, Math.min(100, Math.round(raw * 100)));
+}
+
 function DemandBar({ value }: { value: number }) {
   const t = useTranslations();
-  // VN demand score is 0..100 in our taxonomy seed.
-  const v = Math.max(0, Math.min(100, Math.round(value)));
+  const v = demandPercent(value);
   return (
     <div className="flex min-w-[120px] flex-col">
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">

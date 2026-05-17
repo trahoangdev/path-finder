@@ -38,6 +38,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "@/contexts/locale-context";
 import type { PivotPath, SimilarDevsGroup } from "@/lib/pathfinder/types";
+import { DataSourceBadges } from "./honest-mode";
 
 interface TrajectoryGraphCardProps {
   paths: PivotPath[];
@@ -440,6 +441,10 @@ export function TrajectoryGraphCard({
         <p className="text-sm text-muted-foreground">
           {t("pathfinder.trajectory.subtitle")}
         </p>
+        <DataSourceBadges
+          className="pt-1"
+          sources={["skill_transitions", "synthetic_vn_cohort"]}
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Legend />

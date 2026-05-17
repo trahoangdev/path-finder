@@ -68,9 +68,11 @@ export const messages = {
       pipelineTitle: "Xử lý phía server",
       pipelineExtract: "trích xuất kỹ năng, vai, số năm từ CV",
       pipelineEmbed: "vector 768 chiều của CV + vai mục tiêu",
-      pipelineAtlas: "gap, dev tương tự, gợi ý khóa học",
-      pipelineGraph: "lộ trình pivot đệ quy",
-      pipelineFacet: "proof drawer trong một round-trip",
+      pipelineAtlas: "$vectorSearch — skills / courses / trajectories (gap, khóa học, dev tương tự)",
+      pipelineAggregation:
+        "$facet · $match · $group · $lookup (+ $graphLookup khi đủ đồ thị) — proof, lương JD, pivot, nhánh evidence trong gap",
+      pipelineGraph: "lộ trình pivot (aggregation + tuỳ chọn $graphLookup)",
+      pipelineFacet: "proof drawer: một $facet, bốn nhánh thống kê",
       running: "Đang chạy pipeline…",
       runAnalysis: "Chạy phân tích",
       cvLengthError: "CV phải từ 50–8000 ký tự. Hiện tại {count}.",
@@ -85,7 +87,7 @@ export const messages = {
       step2Body: "vd. AI Engineer, Cloud Engineer, Engineering Manager.",
       step3Title: "Một lần gọi điều phối",
       step3Body:
-        "OpenAI trích xuất kỹ năng, MongoDB Atlas chạy Vector Search + $graphLookup + $facet song song.",
+        "OpenAI trích xuất kỹ năng; MongoDB chạy song song Vector Search ($vectorSearch) và Aggregation ($facet, $lookup, $group) trên nhiều collection.",
       step4Title: "Đọc kế hoạch",
       step4Body:
         "Hồ sơ, gap, ba lộ trình pivot, bằng chứng người đã pivot, và nhóm đồng nghiệp.",
@@ -104,6 +106,12 @@ export const messages = {
       skillsExtracted: "Đã trích {count} kỹ năng",
       noSkills: "Chưa trích được kỹ năng — thử CV dài hơn.",
     },
+    aggregation: {
+      label: "Aggregation pipeline",
+      title: "Các stage MongoDB Aggregation dùng cho card này (xem server/src/services).",
+      gapHint:
+        "Hai pipeline song song: evidence ($match/$lookup trên skill_transitions → skills) và semantic ($vectorSearch + $lookup trên skills); kết quả gộp ở server.",
+    },
     gap: {
       description: "Phân tích khoảng cách",
       title: "Kỹ năng còn thiếu giữa bạn và vai mục tiêu",
@@ -120,7 +128,7 @@ export const messages = {
       description: "Lộ trình pivot",
       title: "Ba hướng từ stack hiện tại tới vai mục tiêu",
       subtitle:
-        "Tính bằng $graphLookup của MongoDB trên đồ thị skill_transitions đã tính sẵn.",
+        "Ba lộ trình từ collection skill_transitions (ETL 07), tổng hợp từ ~3.000 career_trajectories synthetic — không phải roadmap.sh.",
       noPath:
         "Không tìm thấy lộ trình cho kiểu này — đồ thị còn thưa theo hướng này.",
       steps: "Bước",
@@ -135,7 +143,7 @@ export const messages = {
         "Chưa có lộ trình khả thi trên đồ thị skill-transitions — thử kỹ năng nguồn phổ biến hơn hoặc nạp thêm trajectory qua ETL.",
       title: "Ba lộ trình xếp cạnh nhau",
       subtitle:
-        "Mỗi làn là một $graphLookup riêng. Kéo & zoom, fit-to-view từ điều khiển góc dưới trái. Nhãn cạnh hiển thị tháng trung bình + tăng lương từ cohort.",
+        "Cùng dữ liệu với card Lộ trình pivot — mỗi làn một flavor (Nhanh / Cân bằng / Toàn diện). Nhãn cạnh = tháng + tăng lương từ cohort synthetic.",
     },
     proof: {
       description: "Ngăn bằng chứng",
@@ -213,7 +221,7 @@ export const messages = {
       description: "Thời gian pipeline",
       title: "Tổng {total} ms phía server",
       subtitle:
-        "Độ trễ từng giai đoạn. Gap, paths, proof và similar devs chạy song song.",
+        "Per-stage latency. Gap, lộ trình pivot, proof drawer và similar devs chạy song song; sau đó khóa học và lương.",
       extract: "trích xuất kỹ năng",
       embed: "embed",
       gap: "phân tích gap",
