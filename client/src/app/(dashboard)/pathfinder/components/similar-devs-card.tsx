@@ -13,16 +13,18 @@ import type { SimilarDevsGroup } from "@/lib/pathfinder/types";
 import {
   AggregationPipelineBadges,
   DataSourceBadges,
-  HONEST_THRESHOLDS,
   HonestModeBadge,
   InsufficientDataPlaceholder,
+  useHonestThresholds,
+  useRegisterSampleSize,
 } from "./honest-mode";
 
-/** Primary + fallback paths in `server/src/services/vector-search/similar-devs.ts`. */
+/** Current seed uses the aggregation fallback in `server/src/services/vector-search/similar-devs.ts`. */
 const SIMILAR_AGG_STAGES = [
-  "vectorSearch",
   "match",
   "addFields",
+  "reduce",
+  "setIntersection",
   "group",
   "project",
   "sort",
@@ -44,7 +46,9 @@ export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
   const top = [...groups].sort((a, b) => b.count - a.count).slice(0, 8);
   const max = top.reduce((m, g) => Math.max(m, g.count), 1);
   const totalN = groups.reduce((sum, g) => sum + g.count, 0);
-  const hide = totalN < HONEST_THRESHOLDS.hide;
+  const thresholds = useHonestThresholds();
+  const hide = totalN < thresholds.hide;
+  useRegisterSampleSize("similar-devs", totalN);
 
   return (
     <Card>
@@ -65,7 +69,7 @@ export function SimilarDevsCard({ groups }: SimilarDevsCardProps) {
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <HonestModeBadge n={totalN} unit={t("pathfinder.similar.unit")} />
-          <DataSourceBadges sources={["synthetic_vn_cohort", "vec_trajectory_snapshot"]} />
+          <DataSourceBadges sources={["synthetic_vn_cohort", "skill_overlap_fallback"]} />
         </div>
 
         {hide ? (

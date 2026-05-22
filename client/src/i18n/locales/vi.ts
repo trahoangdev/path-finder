@@ -2,12 +2,13 @@ export const messages = {
   meta: {
     title: "PathFinder · Công cụ chuyển hướng sự nghiệp",
     description:
-      "PathFinder giúp lập trình viên Việt Nam lên kế hoạch bước chuyển nghề tiếp theo với MongoDB Atlas Vector Search và Google Gemini.",
+      "PathFinder giúp lập trình viên Việt Nam lên kế hoạch bước chuyển nghề tiếp theo với MongoDB Atlas Vector Search và OpenAI.",
   },
   common: {
     pathfinder: "PathFinder",
     careerPivotEngine: "Công cụ chuyển hướng sự nghiệp",
     careerPivot: "Chuyển hướng sự nghiệp",
+    benchmark: "Benchmark",
     reset: "Đặt lại",
     step: "Bước {n}",
     unknown: "Chưa rõ",
@@ -17,9 +18,11 @@ export const messages = {
     language: "Ngôn ngữ",
     vietnamese: "Tiếng Việt",
     english: "English",
+    close: "Đóng",
   },
   nav: {
     pathfinderGroup: "PathFinder",
+    toolsGroup: "Công cụ",
   },
   skillLevel: {
     beginner: "cơ bản",
@@ -49,6 +52,60 @@ export const messages = {
       "Chúng tôi không đoán mò. Hãy nạp thêm dữ liệu qua ETL (hoặc chọn vai đích phổ biến hơn) rồi chạy lại phân tích.",
     currentN: "(Hiện tại N={n}.)",
   },
+  perf: {
+    page: {
+      title: "Benchmark hiệu năng",
+      badge: "Latency p50/p95/p99",
+      subtitle:
+        "Chạy /api/analyze orchestrator N lần liên tiếp, đo wall-clock từ phía browser và timings server theo từng stage, sau đó breakdown theo phase. Cho thấy recommender hoạt động dưới tải thực tế.",
+    },
+    run: {
+      title: "Chạy benchmark",
+      description: "Tuần tự · single user",
+      subtitle:
+        "Chọn persona để gửi cùng payload mỗi lần, rồi chọn số lần chạy. Mỗi run trải qua toàn bộ pipeline; cooldown 250ms giữa các call.",
+      persona: "Persona",
+      runs: "Số lần",
+      start: "Chạy {runs} lần",
+      stop: "Dừng",
+      progress: "Run {done}/{total}…",
+      done: "Hoàn thành benchmark.",
+      idle: "Đang chờ. Chọn persona và bấm chạy.",
+    },
+    live: {
+      title: "Live latency stream",
+      description: "Mỗi cột = một /api/analyze · wall-clock client",
+      waiting: "Đang đợi run đầu tiên hoàn tất…",
+    },
+    summary: {
+      client: "Wall-clock client",
+      clientHint: "Độ trễ thấy từ browser, gồm network + JSON.",
+      server: "Pipeline server",
+      serverHint: "Tổng các stage MongoDB + LLM mà orchestrator báo cáo.",
+      network: "Overhead network + serdes",
+      networkHint: "client − server. Floor = 0 khi đồng hồ lệch.",
+      avg: "avg",
+      failedRuns: "{failed}/{total} run lỗi — kiểm tra log server.",
+    },
+    phases: {
+      title: "Breakdown theo phase",
+      description: "Sắp theo p95 latency giảm dần",
+      subtitle:
+        "Thời gian đang đi đâu. Bar scale theo phase chậm nhất để dễ thấy bottleneck. Hai phase đầu (extract + embed) gọi OpenAI; phần còn lại gọi MongoDB Atlas.",
+    },
+    raw: {
+      title: "Raw runs",
+      description: "Per-run timings",
+      subtitle: "Tổng wall time {wall}s tính cả cooldown.",
+      client: "client",
+      server: "server",
+      status: "trạng thái",
+    },
+    empty:
+      "Chọn persona và số lần chạy bên trên, bấm chạy. Chưa có dữ liệu nào.",
+    contextHint:
+      "Các số này phụ thuộc Atlas tier, region OpenAI, RTT mạng và trạng thái cache embedding. Coi là tín hiệu kỹ thuật, không phải benchmark chính thức.",
+  },
   pathfinder: {
     page: {
       badge: "MongoDB Atlas · OpenAI",
@@ -68,7 +125,7 @@ export const messages = {
       pipelineTitle: "Xử lý phía server",
       pipelineExtract: "trích xuất kỹ năng, vai, số năm từ CV",
       pipelineEmbed: "vector 768 chiều của CV + vai mục tiêu",
-      pipelineAtlas: "$vectorSearch — skills / courses / trajectories (gap, khóa học, dev tương tự)",
+      pipelineAtlas: "$vectorSearch — skills / courses; aggregation fallback cho dev tương tự",
       pipelineAggregation:
         "$facet · $match · $group · $lookup (+ $graphLookup khi đủ đồ thị) — proof, lương JD, pivot, nhánh evidence trong gap",
       pipelineGraph: "lộ trình pivot (aggregation + tuỳ chọn $graphLookup)",
@@ -112,17 +169,79 @@ export const messages = {
       gapHint:
         "Hai pipeline song song: evidence ($match/$lookup trên skill_transitions → skills) và semantic ($vectorSearch + $lookup trên skills); kết quả gộp ở server.",
     },
+    honestControl: {
+      description: "Điều khiển độ trung thực",
+      title: "Honest Mode — chỉnh ngưỡng tin cậy",
+      subtitle:
+        "Kéo slider hoặc chọn preset. Card dưới ngưỡng \"ẩn\" sẽ chuyển thành \"Chưa đủ dữ liệu\". Đây là cách recommender từ chối đoán mò.",
+      preset: {
+        permissive: "Dễ dãi",
+        default: "Mặc định",
+        strict: "Nghiêm ngặt",
+        custom: "Tuỳ chỉnh",
+      },
+      hideAt: "Ẩn khi",
+      hideHelp: "Dưới ngưỡng N này, card sẽ bị thay bằng thông báo thiếu dữ liệu.",
+      warnAt: "Cảnh báo khi",
+      warnHelp: "Giữa hai ngưỡng ẩn và cảnh báo, card hiển thị nhãn vàng độ tin thấp.",
+      hidden: "Đã ẩn",
+      lowConfidence: "Độ tin thấp",
+      trustworthy: "Đáng tin",
+    },
     gap: {
       description: "Phân tích khoảng cách",
       title: "Kỹ năng còn thiếu giữa bạn và vai mục tiêu",
       subtitle:
-        "Dựa trên Atlas Vector Search. Xếp hạng theo độ tương đồng giữa embedding target − cv và mô tả từng kỹ năng.",
+        "Kết hợp evidence từ skill_transitions với Atlas Vector Search trên mô tả kỹ năng.",
       noGap:
         "Không phát hiện gap — CV của bạn đã bao phủ các kỹ năng cốt lõi của vai này.",
       similarity: "tương đồng",
       pivotMonths: "~ pivot",
       salaryLift: "tăng lương",
       vnDemand: "Nhu cầu VN · {score}",
+      why: "Tại sao?",
+      whyAriaLabel: "Giải thích vì sao gợi ý {skill}",
+    },
+    skillExplain: {
+      title: "Tại sao chọn “{skill}”?",
+      subtitle: "Nguồn bằng chứng cho vai đích “{role}”",
+      tabs: {
+        evidence: "Bằng chứng",
+        metadata: "Metadata",
+        pipeline: "Pipeline",
+      },
+      directEvidence: "Bằng chứng chuyển tiếp trực tiếp",
+      directEvidenceDesc:
+        "tìm thấy dòng cho {skill} → {role}. Tổng hợp từ các pivot event synthetic.",
+      frequency: "Tần suất",
+      avgMonths: "Số tháng TB",
+      avgLift: "Tăng lương TB",
+      confidence: "Độ tin cậy",
+      distribution: "Kỹ năng này dẫn tới vai nào",
+      distributionHint:
+        "Trên toàn bộ trajectory đã học kỹ năng này, đây là các vai họ kết thúc.",
+      samplePivoters: "Ví dụ người đã học kỹ năng này khi pivot",
+      noSamples:
+        "Chưa có trajectory nào khớp combo kỹ năng + vai đích trong cohort synthetic.",
+      noEvidence:
+        "Chưa có dòng skill_transitions trực tiếp cho {skill} → {role}. Recommendation dựa trên similarity ngữ nghĩa.",
+      noMetadata:
+        "Kỹ năng này được trả về bởi Vector Search nhưng chưa có trong taxonomy skills — chạy lại etl/03 để bổ sung.",
+      emerging: "Mới nổi",
+      prerequisites: "Prerequisites",
+      relatedSkills: "Kỹ năng liên quan",
+      pipelineHint:
+        "Đây là các MongoDB aggregation pipeline thật mà endpoint này đã chạy.",
+      pipelineSubs: {
+        evidence: "Dòng transition trực tiếp (skill → vai đích)",
+        metadata: "Metadata kỹ năng, prerequisites, độ phổ biến",
+        distribution: "Kỹ năng này còn dẫn đến đâu (collaborative filtering)",
+        samples: "Tối đa 3 trajectory đã học kỹ năng này trên đường tới đích",
+      },
+      copy: "Copy",
+      copied: "Đã copy",
+      loading: "Đang truy vấn MongoDB…",
+      errorTitle: "Không tải được phần giải thích",
     },
     pivot: {
       description: "Lộ trình pivot",
@@ -137,13 +256,15 @@ export const messages = {
       confidence: "Độ tin cậy",
     },
     trajectory: {
-      description: "Đồ thị lộ trình",
-      titleEmpty: "Trực quan hóa lộ trình pivot",
+      description: "Bản đồ evidence chuyển hướng",
+      titleEmpty: "Trực quan hóa candidate transition paths",
       empty:
         "Chưa có lộ trình khả thi trên đồ thị skill-transitions — thử kỹ năng nguồn phổ biến hơn hoặc nạp thêm trajectory qua ETL.",
-      title: "Ba lộ trình xếp cạnh nhau",
+      title: "Candidate paths từ transition graph",
       subtitle:
-        "Cùng dữ liệu với card Lộ trình pivot — mỗi làn một flavor (Nhanh / Cân bằng / Toàn diện). Nhãn cạnh = tháng + tăng lương từ cohort synthetic.",
+        "Các path này được dựng từ skill_transitions bằng $graphLookup. Chúng là evidence map từ cohort synthetic, không phải dự báo nghề nghiệp chắc chắn.",
+      evidenceNote:
+        "Đây là bản đồ chuyển tiếp từ synthetic cohort dùng để minh họa evidence và MongoDB $graphLookup. Tháng và mức tăng lương là ước tính theo cohort, không phải cam kết cho từng cá nhân.",
     },
     proof: {
       description: "Ngăn bằng chứng",
@@ -168,7 +289,7 @@ export const messages = {
       description: "Developer tương tự",
       title: "Người có stack giống bạn thường kết thúc ở vai nào?",
       subtitle:
-        "Tìm cosine trên embedding career-trajectory, nhóm theo vai hiện tại.",
+        "Hiện dùng aggregation fallback: so khớp overlap kỹ năng và vai bắt đầu, rồi nhóm theo vai hiện tại.",
       unit: "dev tương tự",
       insufficientTitle: "Chưa đủ đồng nghiệp để nhóm",
       insufficientDescription:

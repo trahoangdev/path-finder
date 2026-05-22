@@ -60,7 +60,7 @@ CURATED_SAMPLE: list[dict] = [
         "salary_min": 40,
         "salary_max": 70,
         "salary_currency": "VND",
-        "required_skills": ["Python", "PyTorch", "LangChain", "OpenAI API", "Vector Databases", "MongoDB Atlas"],
+        "required_skills": ["Python", "PyTorch", "LangChain", "LLM API", "Vector Databases", "MongoDB Atlas"],
         "nice_to_have": ["RAG", "LlamaIndex", "Hugging Face", "Kubernetes"],
         "description": "Lead the GenAI platform team. Design and ship production RAG systems on MongoDB Atlas Vector Search, fine-tune open-source LLMs for Vietnamese customers, and build the evaluation harness that keeps quality high as we scale. You will own a service that answers >100K queries / day.",
         "posted_at": _posted(7),

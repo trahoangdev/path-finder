@@ -27,7 +27,7 @@ function levelRank(level: UserSkill['level']): number {
 // generic title alone.
 const TARGET_HINTS: Record<string, string> = {
   'ai engineer':
-    'Builds LLM-powered applications. Core stack: LangChain, LlamaIndex, OpenAI API, vector databases (MongoDB Atlas Vector Search, Pinecone), retrieval-augmented generation (RAG), prompt engineering, embeddings, Hugging Face, fine-tuning, FastAPI.',
+    'Builds LLM-powered applications. Core stack: LangChain, LlamaIndex, LLM APIs, vector databases (MongoDB Atlas Vector Search, Pinecone), retrieval-augmented generation (RAG), prompt engineering, embeddings, Hugging Face, fine-tuning, FastAPI.',
   'machine learning engineer':
     'Trains and ships ML models in production. Core stack: PyTorch, TensorFlow, MLflow, scikit-learn, Kubernetes, Docker, AWS SageMaker, feature stores, model monitoring, MLOps pipelines.',
   'ml engineer':

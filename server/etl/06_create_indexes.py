@@ -105,8 +105,6 @@ def regular_indexes() -> None:
     db["roadmap_edges"].create_index([("roadmap_slug", 1), ("source_node_id", 1)])
     db["roadmap_edges"].create_index("roadmap_slug")
 
-    db["users"].create_index("ttl_expires_at", expireAfterSeconds=0)
-
     log.info("✓ Regular indexes created")
 
 

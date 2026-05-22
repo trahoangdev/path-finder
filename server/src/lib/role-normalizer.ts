@@ -54,7 +54,7 @@ const SKILL_RULES: Scored[] = [
   { canon: 'Mobile Developer', weight: 2, pat: /\b(kotlin|swift|android|ios|dart)\b/i },
 
   // AI Engineer (LLM / RAG)
-  { canon: 'AI Engineer', weight: 4, pat: /\b(langchain|llamaindex|openai api|anthropic|gemini api|rag\b|vector database|vector db)\b/i },
+  { canon: 'AI Engineer', weight: 4, pat: /\b(langchain|llamaindex|llm api|openai api|anthropic|gemini api|rag\b|vector database|vector db)\b/i },
   { canon: 'AI Engineer', weight: 1, pat: /\b(prompt|embedding|hugging ?face)\b/i },
 
   // ML Engineer (training / serving)

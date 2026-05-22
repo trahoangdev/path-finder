@@ -26,6 +26,7 @@ import {
   AggregationPipelineBadges,
   DataSourceBadges,
   HonestModeBadge,
+  useRegisterSampleSize,
 } from "./honest-mode";
 
 /** Top-level stages in `server/src/services/aggregations/salary-band.ts`. */
@@ -47,6 +48,7 @@ const LEVEL_ORDER = ["intern", "junior", "mid", "senior", "lead", "manager"];
 
 export function SalaryBandCard({ data, pivotLift }: SalaryBandCardProps) {
   const t = useTranslations();
+  useRegisterSampleSize("salary-band", data.total_matches);
 
   if (data.total_matches === 0) {
     return (

@@ -33,7 +33,7 @@ export function bootstrapDns(): void {
 
   if (fromEnv && fromEnv.length > 0) {
     dns.setServers(fromEnv);
-    console.log(`[dns] using DNS_SERVERS from env: ${fromEnv.join(', ')}`);
+    console.warn(`[dns] using DNS_SERVERS from env: ${fromEnv.join(', ')}`);
     return;
   }
 

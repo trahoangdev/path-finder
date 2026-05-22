@@ -25,22 +25,20 @@ import { useTranslations } from "@/contexts/locale-context";
 import type { AnalyzeRequest } from "@/lib/pathfinder/types";
 import { DEMO_PERSONAS, type DemoPersona } from "../sample-cv";
 
-// PRD §11 / Phase 1: dropdown carries 12 preset target roles. Anything not in
+// PRD §11 / Phase 1: dropdown carries preset target roles. Anything not in
 // this list still works (the input is free-form), but presets are what the
 // dataset has the most evidence for.
 const TARGET_ROLE_PRESETS = [
   "AI Engineer",
   "Machine Learning Engineer",
+  "Data Scientist",
   "Data Engineer",
   "DevOps Engineer",
   "Cloud Engineer",
-  "Solutions Architect",
-  "Engineering Manager",
-  "Mobile Engineer (React Native)",
+  "Mobile Developer",
   "Full-stack Engineer",
-  "Embedded Engineer",
-  "QA Automation Engineer",
-  "Security Engineer",
+  "Frontend Developer",
+  "Backend Developer",
 ];
 
 interface AnalyzeFormProps {

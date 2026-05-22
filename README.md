@@ -119,7 +119,7 @@ Phase 1 (parallel)
   ┌─ gapAnalysis        — vector search skills + evidence join from skill_transitions
   ├─ pivotPaths         — $graphLookup over a traversable graph, 3 flavors
   ├─ proofDrawer        — $facet on career_trajectories (sample · conversion · salary)
-  └─ similarDevs        — $vectorSearch on snapshots OR skill-overlap aggregation fallback
+  └─ similarDevs        — skill-overlap aggregation fallback (snapshot vector path is ready once seeded)
 
 Phase 2 (parallel, depends on Phase 1 gap)
   ┌─ courses-by-skill   — embedBatch top-3 missing skills, $vectorSearch courses
@@ -127,7 +127,7 @@ Phase 2 (parallel, depends on Phase 1 gap)
   └─ salaryInference    — $group on pivots_detected — median lift % post-pivot
 ```
 
-End-to-end target: **< 4 s P95** on M0 free-tier (parallelism + pre-computed `skill_transitions` are doing the heavy lifting).
+End-to-end target: **< 4 s P95** on a warmed demo environment; current local smoke runs typically land around **4–6 s** depending on OpenAI latency.
 
 ---
 

@@ -85,6 +85,93 @@ export const GapAnalysisResponseSchema = z
   })
   .openapi('GapAnalysisResponse');
 
+// ─── /skill-explain ─────────────────────────────────────────────────────────
+
+export const SkillExplainRequestSchema = z
+  .object({
+    skill_name: z.string().min(1).max(120),
+    target_role: z.string().min(1).max(120),
+  })
+  .openapi('SkillExplainRequest');
+
+const SkillTransitionRowSchema = z
+  .object({
+    from_skill: z.string(),
+    to_skill: z.string(),
+    edge_kind: z.string().optional(),
+    frequency: z.number().optional(),
+    avg_months: z.number().optional(),
+    avg_salary_lift_pct: z.number().optional(),
+    role_change_rate: z.number().optional(),
+    sample_size: z.number().optional(),
+    confidence: ConfidenceSchema.optional(),
+    target_roles: z.array(z.string()).optional(),
+  })
+  .openapi('SkillTransitionRow');
+
+const SkillMetadataSchema = z
+  .object({
+    name: z.string(),
+    slug: z.string().optional(),
+    category: z.string().optional(),
+    description: z.string().optional(),
+    prerequisites: z.array(z.string()).optional(),
+    related_skills: z.array(z.string()).optional(),
+    popularity_rank: z.number().optional(),
+    is_emerging: z.boolean().optional(),
+    vn_demand_score: z.number().optional(),
+  })
+  .openapi('SkillMetadata');
+
+const RoleDistributionRowSchema = z
+  .object({
+    role: z.string(),
+    count: z.number().int(),
+    avg_months: z.number().optional(),
+    avg_salary_lift_pct: z.number().optional(),
+  })
+  .openapi('RoleDistributionRow');
+
+const SampleTrajectorySchema = z
+  .object({
+    anon_id: z.string(),
+    starting_role: z.string().optional(),
+    current_role: z.string(),
+    total_years_exp: z.number(),
+    comp_total_usd: z.number().optional(),
+    source: z.string(),
+    matched_pivot: z
+      .object({
+        from_role: z.string().optional(),
+        to_role: z.string().optional(),
+        months_to_pivot: z.number().optional(),
+        salary_lift_pct: z.number().optional(),
+        skills_learned: z.array(z.string()).optional(),
+      })
+      .optional(),
+  })
+  .openapi('SampleTrajectory');
+
+export const SkillExplainResponseSchema = z
+  .object({
+    skill_name: z.string(),
+    target_role: z.string(),
+    metadata: SkillMetadataSchema.nullable(),
+    transition_evidence: z.object({
+      direct: SkillTransitionRowSchema.nullable(),
+      role_distribution: z.array(RoleDistributionRowSchema),
+    }),
+    sample_trajectories: z.array(SampleTrajectorySchema),
+    pipelines: z.object({
+      skill_transitions_pipeline: z.array(z.unknown()),
+      skill_metadata_pipeline: z.array(z.unknown()),
+      role_distribution_pipeline: z.array(z.unknown()),
+      sample_trajectories_pipeline: z.array(z.unknown()),
+    }),
+    aggregation_stages: z.array(z.string()),
+  })
+  .openapi('SkillExplainResponse');
+
 // ─── /pivot-paths ────────────────────────────────────────────────────────────
 
 export const PivotPathRequestSchema = z

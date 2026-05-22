@@ -19,7 +19,7 @@ interface SkillInfo {
 }
 
 interface TransitionRow {
-  from_skill: string;
+  candidate_skill: string;
   avg_months?: number;
   avg_salary_lift_pct?: number;
   frequency?: number;
@@ -55,7 +55,7 @@ export async function gapAnalysis({
   target_role,
   limit = 10,
 }: GapAnalysisOpts): Promise<MissingSkill[]> {
-  const userSkillsLower = new Set(user_skills.map((s) => s.toLowerCase()));
+  const userSkillKeys = new Set(user_skills.map(normalizeSkillKey));
 
   const [evidence, semantic] = await Promise.all([
     target_role ? evidenceGap(target_role, limit) : Promise.resolve<MissingSkill[]>([]),
@@ -66,8 +66,8 @@ export async function gapAnalysis({
   const seen = new Set<string>();
   const merged: MissingSkill[] = [];
   for (const row of [...evidence, ...semantic]) {
-    const key = row.name.toLowerCase();
-    if (userSkillsLower.has(key) || seen.has(key)) continue;
+    const key = normalizeSkillKey(row.name);
+    if (userSkillKeys.has(key) || seen.has(key) || isJunkSkillName(row.name)) continue;
     seen.add(key);
     merged.push(row);
     if (merged.length >= limit) break;
@@ -85,8 +85,35 @@ async function evidenceGap(targetRole: string, limit: number): Promise<MissingSk
     .aggregate<Row>([
       {
         $match: {
-          to_skill: targetRole,
-          $or: [{ edge_kind: 'skill_to_role' }, { edge_kind: { $exists: false } }],
+          $or: [
+            { to_skill: targetRole },
+            { target_roles: targetRole },
+            { target_roles: { $in: [targetRole] } },
+          ],
+        },
+      },
+      {
+        $addFields: {
+          candidate_skill: {
+            $cond: [
+              { $eq: ['$edge_kind', 'skill_to_role'] },
+              '$from_skill',
+              '$to_skill',
+            ],
+          },
+        },
+      },
+      {
+        $match: {
+          candidate_skill: { $ne: targetRole },
+        },
+      },
+      {
+        $group: {
+          _id: '$candidate_skill',
+          avg_months: { $avg: '$avg_months' },
+          avg_salary_lift_pct: { $max: '$avg_salary_lift_pct' },
+          frequency: { $sum: '$frequency' },
         },
       },
       { $sort: { frequency: -1, avg_salary_lift_pct: -1 } },
@@ -94,7 +121,7 @@ async function evidenceGap(targetRole: string, limit: number): Promise<MissingSk
       {
         $lookup: {
           from: 'skills',
-          let: { skName: '$from_skill' },
+          let: { skName: '$_id' },
           pipeline: [
             { $match: { $expr: { $eq: ['$name', '$$skName'] } } },
             { $limit: 1 },
@@ -118,7 +145,7 @@ async function evidenceGap(targetRole: string, limit: number): Promise<MissingSk
       {
         $project: {
           _id: 0,
-          from_skill: 1,
+          candidate_skill: '$_id',
           avg_months: 1,
           avg_salary_lift_pct: 1,
           frequency: 1,
@@ -141,11 +168,11 @@ async function evidenceGap(targetRole: string, limit: number): Promise<MissingSk
   const maxFreq = rows.reduce((m, r) => Math.max(m, r.frequency ?? 0), 1);
 
   return rows.map((r) => ({
-    name: r.from_skill,
+    name: displaySkillName(r.candidate_skill),
     category: r.skill_info?.category ?? 'concept',
     description:
       r.skill_info?.description ??
-      `${r.from_skill} — a skill that ${r.frequency ?? 0} devs added to pivot into ${targetRole}.`,
+      `${displaySkillName(r.candidate_skill)} — a skill that ${r.frequency ?? 0} devs added to pivot into ${targetRole}.`,
     similarity: 0.5 + 0.5 * Math.log10((r.frequency ?? 1) + 1) / Math.log10(maxFreq + 1),
     vn_demand_score: r.skill_info?.vn_demand_score ?? 0,
     transition: {
@@ -184,6 +211,12 @@ async function semanticGap(
           { name: { $not: { $regex: '^[A-Za-z0-9_]{15,}$' } } },
           // Obvious off-topic single-word nouns.
           { name: { $not: { $regex: '^(Apache|Mode|General|Misc|Other|Operators|Glossary|Topics|Roadmap|Econometrics)$', $options: 'i' } } },
+          // Role/comparison/article nodes are useful in roadmap pages but bad
+          // recommendation outputs.
+          { name: { $not: { $regex: '(Engineer|Developer|\\bvs\\b|Applications|Specialization|Roadmap|tracks?)', $options: 'i' } } },
+          { name: { $not: { $regex: '^Full[- ]?Stack$', $options: 'i' } } },
+          { name: { $not: { $regex: '^(Frontend|Backend|DevOps|Cloud|Mobile)$', $options: 'i' } } },
+          { name: { $not: { $regex: '^(If|At this point|You should|After this)\\b', $options: 'i' } } },
           { $expr: { $gte: [{ $strLenCP: '$name' }, 2] } },
         ],
       },
@@ -191,7 +224,7 @@ async function semanticGap(
     {
       $project: {
         _id: 0,
-        name: 1,
+          name: 1,
         category: 1,
         description: 1,
         vn_demand_score: 1,
@@ -232,5 +265,30 @@ async function semanticGap(
     { $limit: Math.max(limit * 2, 20) },
   ]);
 
-  return cursor.toArray();
+  const rows = await cursor.toArray();
+  return rows.map((row) => ({
+    ...row,
+    name: displaySkillName(row.name),
+    description: displaySkillName(row.description),
+  }));
+}
+
+function normalizeSkillKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9+#]+/g, '');
+}
+
+function isJunkSkillName(name: string): boolean {
+  return (
+    /(engineer|developer|\bvs\b|applications|specialization|roadmap|tracks?)/i.test(name) ||
+    /^(frontend|backend|devops|cloud|mobile|full[- ]?stack)$/i.test(name) ||
+    /^(if|at this point|you should|after this)\b/i.test(name) ||
+    name.trim().split(/\s+/).length > 6
+  );
+}
+
+function displaySkillName(name: string): string {
+  return name
+    .replace(/\bOpenAI API\b/g, 'LLM API')
+    .replace(/\bOpenAI-compatible APIs\b/g, 'LLM-compatible APIs')
+    .replace(/\bOpenAI\b/g, 'LLM Providers');
 }

@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   GitBranch,
+  Info,
   Rabbit,
   Scale,
   Telescope,
@@ -275,13 +276,13 @@ function LaneNode({ data }: NodeProps<LaneNodeType>) {
       >
         <span className="flex items-center gap-1.5 text-[13px]">
           <Icon className="size-4" />
-          <span>{t(`pivotFlavor.${flavor}`)}</span>
+          <span>{t(`pivotFlavor.${flavor}`)} candidate</span>
         </span>
         <div className="flex items-center gap-2 font-mono text-[11px] font-medium opacity-95">
-          <span>{Math.round(path.total_months)}mo</span>
+          <span>est. {Math.round(path.total_months)}mo</span>
           <span className="opacity-50">·</span>
           <span className="text-emerald-700 dark:text-emerald-300">
-            +{Math.round(path.total_lift_pct)}%
+            est. +{Math.round(path.total_lift_pct)}%
           </span>
         </div>
       </div>
@@ -363,12 +364,12 @@ function LabeledEdge({
         >
           {data?.months ? (
             <span className="rounded-sm border border-border/70 bg-background px-1.5 py-0.5 font-mono font-semibold text-foreground shadow-sm">
-              {Math.round(data.months)}mo
+              ~{Math.round(data.months)}mo
             </span>
           ) : null}
           {data?.lift ? (
             <span className="rounded-sm border border-emerald-400/50 bg-background px-1.5 py-0.5 font-mono font-semibold text-emerald-700 shadow-sm dark:text-emerald-300">
-              +{Math.round(data.lift)}%
+              ~+{Math.round(data.lift)}%
             </span>
           ) : null}
         </div>
@@ -443,10 +444,11 @@ export function TrajectoryGraphCard({
         </p>
         <DataSourceBadges
           className="pt-1"
-          sources={["skill_transitions", "synthetic_vn_cohort"]}
+          sources={["skill_transitions", "synthetic_vn_cohort", "not_real_user_data"]}
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <EvidenceNote />
         <Legend />
 
         <div
@@ -497,9 +499,8 @@ export function TrajectoryGraphCard({
         {topSimilar.length > 0 && (
           <div className="rounded-lg border bg-muted/30 p-3">
             <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-              Where people with your stack land →{" "}
+              Similar synthetic cohorts also land near{" "}
               <span className="font-mono text-foreground">{targetRole}</span>{" "}
-              and beyond
             </div>
             <ul className="flex flex-wrap gap-2">
               {topSimilar.map((g) => (
@@ -550,11 +551,21 @@ function Legend() {
         );
       })}
       <span className="text-muted-foreground">
-        Edge label · <span className="font-mono text-foreground">months</span> ·{" "}
+        Edge label · <span className="font-mono text-foreground">estimated months</span> ·{" "}
         <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">
-          +% lift
+          estimated +% lift
         </span>
       </span>
+    </div>
+  );
+}
+
+function EvidenceNote() {
+  const t = useTranslations();
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-amber-400/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+      <Info className="mt-0.5 size-3.5 shrink-0" />
+      <p>{t("pathfinder.trajectory.evidenceNote")}</p>
     </div>
   );
 }

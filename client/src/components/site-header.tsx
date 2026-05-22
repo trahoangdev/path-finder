@@ -8,6 +8,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { CommandSearch, SearchTrigger } from "@/components/command-search"
 import { LanguageSwitcher } from "@/components/language-switcher"
 import { ModeToggle } from "@/components/mode-toggle"
+import { SiteNavTabs } from "@/components/site-nav-tabs"
 import { ThemeCustomizer } from "@/components/theme-customizer"
 
 export function SiteHeader() {
@@ -35,6 +36,7 @@ export function SiteHeader() {
             orientation="vertical"
             className="mx-2 data-[orientation=vertical]:h-4"
           />
+          <SiteNavTabs />
           <div className="flex-1 max-w-sm">
             <SearchTrigger onClick={() => setSearchOpen(true)} />
           </div>
