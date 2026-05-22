@@ -2,12 +2,13 @@ export const messages = {
   meta: {
     title: "PathFinder · Career Pivot Engine",
     description:
-      "PathFinder helps Vietnamese developers plan their next career move with MongoDB Atlas Vector Search and Google Gemini.",
+      "PathFinder helps Vietnamese developers plan their next career move with MongoDB Atlas Vector Search and OpenAI.",
   },
   common: {
     pathfinder: "PathFinder",
     careerPivotEngine: "Career Pivot Engine",
     careerPivot: "Career Pivot",
+    benchmark: "Benchmark",
     reset: "Reset",
     step: "Step {n}",
     unknown: "Unknown",
@@ -17,9 +18,11 @@ export const messages = {
     language: "Language",
     vietnamese: "Tiếng Việt",
     english: "English",
+    close: "Close",
   },
   nav: {
     pathfinderGroup: "PathFinder",
+    toolsGroup: "Tools",
   },
   skillLevel: {
     beginner: "beginner",
@@ -49,6 +52,60 @@ export const messages = {
       "We won't guess. Seed more entries via the ETL (or pick a more populated target) and re-run the analysis.",
     currentN: "(Current N={n}.)",
   },
+  perf: {
+    page: {
+      title: "Performance benchmark",
+      badge: "Latency p50/p95/p99",
+      subtitle:
+        "Run the /api/analyze orchestrator N times in a row, capture client wall-clock and per-stage server timings, then break them down by phase. Shows the recommender under realistic load.",
+    },
+    run: {
+      title: "Run a benchmark",
+      description: "Sequential runs · single user",
+      subtitle:
+        "Pick a persona to feed the same payload every iteration, then choose how many runs. Each run hits the full pipeline; cooldown 250ms between calls.",
+      persona: "Persona",
+      runs: "Runs",
+      start: "Run {runs} times",
+      stop: "Stop",
+      progress: "Run {done} of {total}…",
+      done: "Benchmark complete.",
+      idle: "Idle. Pick a persona and click run.",
+    },
+    live: {
+      title: "Live latency stream",
+      description: "Each bar = one /api/analyze call · client wall-clock",
+      waiting: "Waiting for the first run to complete…",
+    },
+    summary: {
+      client: "Client wall-clock",
+      clientHint: "Browser-perceived latency, includes network + JSON.",
+      server: "Server pipeline",
+      serverHint: "Sum of MongoDB + LLM stages reported by orchestrator.",
+      network: "Network + serdes overhead",
+      networkHint: "client − server. Floor = 0 when clocks disagree.",
+      avg: "avg",
+      failedRuns: "{failed} of {total} runs failed — check server logs.",
+    },
+    phases: {
+      title: "Per-phase breakdown",
+      description: "Sorted by p95 latency",
+      subtitle:
+        "Where the time goes. Bars scale to the slowest phase so you can spot the bottleneck instantly. The first two phases (extract + embed) hit OpenAI; the rest hit MongoDB Atlas.",
+    },
+    raw: {
+      title: "Raw runs",
+      description: "Per-run timings",
+      subtitle: "Total wall time {wall}s including cooldowns.",
+      client: "client",
+      server: "server",
+      status: "status",
+    },
+    empty:
+      "Pick a persona and run count above, then click run. Nothing has been measured yet.",
+    contextHint:
+      "These numbers depend on Atlas tier, OpenAI region, network RTT and embedding cache state. Treat them as engineering signals, not benchmark reports.",
+  },
   pathfinder: {
     page: {
       badge: "MongoDB Atlas · OpenAI",
@@ -68,7 +125,7 @@ export const messages = {
       pipelineTitle: "What runs server-side",
       pipelineExtract: "extract skills, role, years from CV",
       pipelineEmbed: "768-dim vector of CV + target role",
-      pipelineAtlas: "$vectorSearch — skills / courses / trajectories (gap, courses, similar devs)",
+      pipelineAtlas: "$vectorSearch — skills / courses; aggregation fallback for similar devs",
       pipelineAggregation:
         "$facet · $match · $group · $lookup (+ optional $graphLookup when the graph has edges) — proof, JD salary band, pivot paths, evidence branch in gap",
       pipelineGraph: "pivot paths (aggregation + optional $graphLookup)",
@@ -112,17 +169,79 @@ export const messages = {
       gapHint:
         "Two pipelines in parallel: evidence ($match/$lookup on skill_transitions → skills) and semantic ($vectorSearch + $lookup on skills); results merged server-side.",
     },
+    honestControl: {
+      description: "Live honesty controls",
+      title: "Honest Mode — tune the trust thresholds",
+      subtitle:
+        "Drag the sliders or pick a preset. Cards below \"hide\" turn into \"Not enough data\" placeholders. This is the recommender refusing to guess.",
+      preset: {
+        permissive: "Permissive",
+        default: "Default",
+        strict: "Strict",
+        custom: "Custom",
+      },
+      hideAt: "Hide when",
+      hideHelp: "Below this N, the card is replaced by an insufficient-data notice.",
+      warnAt: "Warn when",
+      warnHelp: "Between hide and warn, cards render with an amber low-confidence badge.",
+      hidden: "Hidden",
+      lowConfidence: "Low confidence",
+      trustworthy: "Trustworthy",
+    },
     gap: {
       description: "Gap analysis",
       title: "Missing skills between you and the target role",
       subtitle:
-        "Powered by Atlas Vector Search. Ranked by similarity between target − cv embedding and each skill's description.",
+        "Combines skill-transition evidence with Atlas Vector Search over skill descriptions.",
       noGap:
         "No gap detected — your CV already covers this role's core skills.",
       similarity: "similarity",
       pivotMonths: "~ pivot",
       salaryLift: "salary lift",
       vnDemand: "VN demand · {score}",
+      why: "Why?",
+      whyAriaLabel: "Explain why {skill} is recommended",
+    },
+    skillExplain: {
+      title: "Why “{skill}”?",
+      subtitle: "Evidence path for the “{role}” target",
+      tabs: {
+        evidence: "Evidence",
+        metadata: "Metadata",
+        pipeline: "Pipeline",
+      },
+      directEvidence: "Direct transition evidence",
+      directEvidenceDesc:
+        "row found for {skill} → {role}. Aggregated from synthetic pivot events.",
+      frequency: "Frequency",
+      avgMonths: "Avg months",
+      avgLift: "Avg lift",
+      confidence: "Confidence",
+      distribution: "Roles where this skill leads",
+      distributionHint:
+        "Across all trajectories that picked up this skill, here is where they ended up.",
+      samplePivoters: "Sample pivoters who learned this skill",
+      noSamples:
+        "No trajectories matched this skill + target combo in the synthetic cohort.",
+      noEvidence:
+        "No direct skill_transitions row for {skill} → {role}. The recommendation was driven by semantic similarity only.",
+      noMetadata:
+        "This skill was returned by Vector Search but is not in the skills taxonomy yet — re-run etl/03 to enrich.",
+      emerging: "Emerging",
+      prerequisites: "Prerequisites",
+      relatedSkills: "Related skills",
+      pipelineHint:
+        "These are the exact MongoDB aggregation pipelines this endpoint ran.",
+      pipelineSubs: {
+        evidence: "Direct (skill → target_role) transition row",
+        metadata: "Skill metadata, prerequisites, popularity",
+        distribution: "Where else this skill leads (collaborative-filtering signal)",
+        samples: "Up to 3 trajectories that learned this skill on the way to the target",
+      },
+      copy: "Copy",
+      copied: "Copied",
+      loading: "Querying MongoDB…",
+      errorTitle: "Could not load explanation",
     },
     pivot: {
       description: "Pivot paths",
@@ -137,13 +256,15 @@ export const messages = {
       confidence: "Confidence",
     },
     trajectory: {
-      description: "Trajectory graph",
-      titleEmpty: "Visualize pivot routes",
+      description: "Transition evidence map",
+      titleEmpty: "Visualize candidate transition paths",
       empty:
         "No reachable paths in the skill-transitions graph yet — try a more populated source skill or seed more trajectories via the ETL.",
-      title: "Three routes laid out side-by-side",
+      title: "Candidate paths from the transition graph",
       subtitle:
-        "Same data as the pivot card — one swimlane per flavor (Fast / Balanced / Comprehensive). Edge labels = months + salary lift from the synthetic cohort.",
+        "These paths are built from skill_transitions with $graphLookup. Treat them as a synthetic-cohort evidence map, not a deterministic career forecast.",
+      evidenceNote:
+        "This is a transition map from a synthetic cohort used to show evidence and MongoDB $graphLookup. Months and lift are cohort estimates, not individual guarantees.",
     },
     proof: {
       description: "Proof drawer",
@@ -168,7 +289,7 @@ export const messages = {
       description: "Similar developers",
       title: "What roles do people with your stack actually end up in?",
       subtitle:
-        "Cosine search over career-trajectory embeddings, grouped by current role.",
+        "Currently uses the aggregation fallback: skill-overlap and start-role matching, grouped by current role.",
       unit: "similar devs",
       insufficientTitle: "Not enough peers to cluster",
       insufficientDescription:

@@ -1,5 +1,7 @@
 import { z } from '@hono/zod-openapi';
 
+import { EmbeddingVectorSchema } from './common.js';
+
 export const SalaryBandSchema = z
   .enum(['<10tr', '10-20tr', '20-30tr', '30-50tr', '>50tr'])
   .openapi('SalaryBand');
@@ -10,6 +12,7 @@ export const TrajectorySnapshotSchema = z
     role: z.string(),
     skills_have: z.array(z.string()),
     skills_want: z.array(z.string()),
+    cv_embedding: EmbeddingVectorSchema.optional(),
     salary_band: SalaryBandSchema.optional(),
   })
   .openapi('TrajectorySnapshot');

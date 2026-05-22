@@ -20,6 +20,8 @@ import { SimilarDevsCard } from "./similar-devs-card";
 import { CoursesCard } from "./courses-card";
 import { SalaryBandCard } from "./salary-band-card";
 import { TimingsCard } from "./timings-card";
+import { HonestModeProvider } from "./honest-mode";
+import { HonestModeControl } from "./honest-mode-control";
 
 type ViewState =
   | { kind: "idle" }
@@ -38,26 +40,32 @@ export function AnalysisResults({ state }: AnalysisResultsProps) {
 
   const { data, payload } = state;
   return (
-    <div className="flex flex-col gap-4">
-      <ProfileCard profile={data.profile} targetRole={payload.target_role} />
-      <GapAnalysisCard skills={data.gap_analysis.missing_skills} />
-      <PivotPathsCard paths={data.pivot_paths.paths} />
-      <TrajectoryGraphCard
-        paths={data.pivot_paths.paths}
-        similar={data.similar_devs.groups}
-        targetRole={payload.target_role}
-      />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ProofDrawerCard data={data.proof_drawer} />
-        <SimilarDevsCard groups={data.similar_devs.groups} />
+    <HonestModeProvider>
+      <div className="flex flex-col gap-4">
+        <ProfileCard profile={data.profile} targetRole={payload.target_role} />
+        <HonestModeControl />
+        <GapAnalysisCard
+          skills={data.gap_analysis.missing_skills}
+          targetRole={payload.target_role}
+        />
+        <PivotPathsCard paths={data.pivot_paths.paths} />
+        <TrajectoryGraphCard
+          paths={data.pivot_paths.paths}
+          similar={data.similar_devs.groups}
+          targetRole={payload.target_role}
+        />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ProofDrawerCard data={data.proof_drawer} />
+          <SimilarDevsCard groups={data.similar_devs.groups} />
+        </div>
+        <SalaryBandCard
+          data={data.salary_band}
+          pivotLift={data.pivot_salary_lift ?? []}
+        />
+        <CoursesCard groups={data.courses_by_skill ?? []} />
+        <TimingsCard timings={data.timings_ms} />
       </div>
-      <SalaryBandCard
-        data={data.salary_band}
-        pivotLift={data.pivot_salary_lift ?? []}
-      />
-      <CoursesCard groups={data.courses_by_skill ?? []} />
-      <TimingsCard timings={data.timings_ms} />
-    </div>
+    </HonestModeProvider>
   );
 }
 

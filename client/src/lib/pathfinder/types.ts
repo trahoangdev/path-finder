@@ -133,6 +133,79 @@ export interface CoursePublic {
   similarity?: number;
 }
 
+// ─── /api/skill-explain ──────────────────────────────────────────────────────
+
+export interface SkillTransitionRow {
+  from_skill: string;
+  to_skill: string;
+  edge_kind?: string;
+  frequency?: number;
+  avg_months?: number;
+  avg_salary_lift_pct?: number;
+  role_change_rate?: number;
+  sample_size?: number;
+  confidence?: Confidence;
+  target_roles?: string[];
+}
+
+export interface SkillMetadata {
+  name: string;
+  slug?: string;
+  category?: string;
+  description?: string;
+  prerequisites?: string[];
+  related_skills?: string[];
+  popularity_rank?: number;
+  is_emerging?: boolean;
+  vn_demand_score?: number;
+}
+
+export interface RoleDistributionRow {
+  role: string;
+  count: number;
+  avg_months?: number;
+  avg_salary_lift_pct?: number;
+}
+
+export interface SampleTrajectory {
+  anon_id: string;
+  starting_role?: string;
+  current_role: string;
+  total_years_exp: number;
+  comp_total_usd?: number;
+  source: string;
+  matched_pivot?: {
+    from_role?: string;
+    to_role?: string;
+    months_to_pivot?: number;
+    salary_lift_pct?: number;
+    skills_learned?: string[];
+  };
+}
+
+export interface SkillExplainRequest {
+  skill_name: string;
+  target_role: string;
+}
+
+export interface SkillExplainResponse {
+  skill_name: string;
+  target_role: string;
+  metadata: SkillMetadata | null;
+  transition_evidence: {
+    direct: SkillTransitionRow | null;
+    role_distribution: RoleDistributionRow[];
+  };
+  sample_trajectories: SampleTrajectory[];
+  pipelines: {
+    skill_transitions_pipeline: unknown[];
+    skill_metadata_pipeline: unknown[];
+    role_distribution_pipeline: unknown[];
+    sample_trajectories_pipeline: unknown[];
+  };
+  aggregation_stages: string[];
+}
+
 // ─── /api/analyze (orchestrator) ─────────────────────────────────────────────
 
 export interface AnalyzeRequest {

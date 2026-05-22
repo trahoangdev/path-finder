@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Compass } from "lucide-react"
+import { Activity, Compass } from "lucide-react"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
 import { useTranslations } from "@/contexts/locale-context"
@@ -35,6 +35,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: t("common.careerPivot"),
             url: "/pathfinder",
             icon: Compass,
+          },
+        ],
+      },
+      {
+        label: t("nav.toolsGroup"),
+        items: [
+          {
+            title: t("common.benchmark"),
+            url: "/perf",
+            icon: Activity,
           },
         ],
       },

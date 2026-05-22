@@ -9,7 +9,7 @@ import { inter } from "@/lib/fonts";
 export const metadata: Metadata = {
   title: "PathFinder · Công cụ chuyển hướng sự nghiệp",
   description:
-    "PathFinder giúp lập trình viên Việt Nam lên kế hoạch bước chuyển nghề tiếp theo với MongoDB Atlas Vector Search và Google Gemini.",
+    "PathFinder giúp lập trình viên Việt Nam lên kế hoạch bước chuyển nghề tiếp theo với MongoDB Atlas Vector Search và OpenAI.",
 };
 
 export default function RootLayout({

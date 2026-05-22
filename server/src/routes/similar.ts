@@ -11,8 +11,9 @@ const route = createRoute({
   path: '/similar-devs',
   tags: ['analysis'],
   summary: 'Find devs with similar past profiles and where they ended up',
-  description: `Vector Search on \`career_trajectories.snapshots[].cv_embedding\` to locate
-similar dev pasts (filtered by country), then aggregates current roles + avg salary.`,
+  description: `Finds similar dev cohorts. When snapshot embeddings are seeded, the service
+uses Vector Search on \`career_trajectories.snapshots[].cv_embedding\`; otherwise it
+falls back to aggregation based on skill overlap and starting role.`,
   request: {
     body: { content: { 'application/json': { schema: SimilarDevsRequestSchema } } },
   },

@@ -22,6 +22,7 @@ import { proofApp } from './routes/proof.js';
 import { similarApp } from './routes/similar.js';
 import { coursesApp } from './routes/courses.js';
 import { orchestratorApp } from './routes/orchestrator.js';
+import { skillExplainApp } from './routes/skill-explain.js';
 
 const app = new OpenAPIHono();
 
@@ -70,6 +71,7 @@ app.route('/api', proofApp);
 app.route('/api', similarApp);
 app.route('/api', coursesApp);
 app.route('/api', orchestratorApp);
+app.route('/api', skillExplainApp);
 
 // ─── OpenAPI + Swagger UI ───────────────────────────────────────────────────
 

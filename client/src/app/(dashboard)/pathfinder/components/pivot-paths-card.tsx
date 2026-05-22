@@ -70,7 +70,7 @@ export function PivotPathsCard({ paths }: PivotPathsCardProps) {
         />
         <DataSourceBadges
           className="pt-1"
-          sources={["skill_transitions", "synthetic_vn_cohort"]}
+          sources={["skill_transitions", "synthetic_vn_cohort", "not_real_user_data"]}
         />
       </CardHeader>
       <CardContent>

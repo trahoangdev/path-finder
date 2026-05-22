@@ -15,9 +15,10 @@ import type { ProofDrawerResponse } from "@/lib/pathfinder/types";
 import {
   AggregationPipelineBadges,
   DataSourceBadges,
-  HONEST_THRESHOLDS,
   HonestModeBadge,
   InsufficientDataPlaceholder,
+  useHonestThresholds,
+  useRegisterSampleSize,
 } from "./honest-mode";
 
 const PROOF_AGG_STAGES = ["match", "facet", "group"] as const;
@@ -28,9 +29,13 @@ interface ProofDrawerCardProps {
 
 export function ProofDrawerCard({ data }: ProofDrawerCardProps) {
   const t = useTranslations();
+  const thresholds = useHonestThresholds();
   const examples = data.example_profiles.slice(0, 4);
-  // Honest Mode (F7.3): when N < 10, refuse to render speculative stats.
-  const hide = data.sample_size < HONEST_THRESHOLDS.hide;
+  // Honest Mode (F7.3): when N < hide threshold, refuse to render speculative
+  // stats. Threshold is now driven by <HonestModeProvider> and can be tuned
+  // live via <HonestModeControl />.
+  const hide = data.sample_size < thresholds.hide;
+  useRegisterSampleSize("proof-drawer", data.sample_size);
 
   return (
     <Card>

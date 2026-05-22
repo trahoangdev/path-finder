@@ -1,6 +1,7 @@
 "use client";
 
-import { Target } from "lucide-react";
+import * as React from "react";
+import { HelpCircle, Target } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -9,11 +10,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { useTranslations } from "@/contexts/locale-context";
 import type { MissingSkill } from "@/lib/pathfinder/types";
 import { AggregationPipelineBadges } from "./honest-mode";
+import { SkillExplainDrawer } from "./skill-explain-drawer";
 
 const GAP_AGG_STAGES = [
   "match",
@@ -27,15 +30,18 @@ const GAP_AGG_STAGES = [
 
 interface GapAnalysisCardProps {
   skills: MissingSkill[];
+  /** Canonical target role passed to the explain drawer. */
+  targetRole: string;
 }
 
 function pct(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function GapAnalysisCard({ skills }: GapAnalysisCardProps) {
+export function GapAnalysisCard({ skills, targetRole }: GapAnalysisCardProps) {
   const t = useTranslations();
   const top = skills.slice(0, 10);
+  const [activeSkill, setActiveSkill] = React.useState<string | null>(null);
 
   return (
     <Card>
@@ -99,6 +105,18 @@ export function GapAnalysisCard({ skills }: GapAnalysisCardProps) {
                         accent
                       />
                     ) : null}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 gap-1 text-xs"
+                      onClick={() => setActiveSkill(skill.name)}
+                      aria-label={t("pathfinder.gap.whyAriaLabel", {
+                        skill: skill.name,
+                      })}
+                    >
+                      <HelpCircle className="size-3.5" />
+                      {t("pathfinder.gap.why")}
+                    </Button>
                   </div>
                 </div>
                 {idx < top.length - 1 ? <Separator /> : null}
@@ -107,6 +125,15 @@ export function GapAnalysisCard({ skills }: GapAnalysisCardProps) {
           </div>
         )}
       </CardContent>
+
+      <SkillExplainDrawer
+        open={activeSkill != null}
+        onOpenChange={(open) => {
+          if (!open) setActiveSkill(null);
+        }}
+        skillName={activeSkill ?? ""}
+        targetRole={targetRole}
+      />
     </Card>
   );
 }

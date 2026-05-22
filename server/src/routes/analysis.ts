@@ -11,9 +11,9 @@ const route = createRoute({
   path: '/gap-analysis',
   tags: ['analysis'],
   summary: 'Find skills the user is missing to reach a target role',
-  description: `Uses MongoDB Atlas Vector Search to find skills semantically closest to the
-*gap vector* (target_embedding − cv_embedding) — i.e. the semantic direction the user must
-move in. Each result is enriched with transition metadata (time-to-acquire, salary lift).`,
+  description: `Uses MongoDB Atlas Vector Search to find skills semantically close to the
+target-role embedding. The /api/analyze orchestrator also passes the canonical target role,
+which enables the evidence-first skill_transitions branch before semantic fallback.`,
   request: {
     body: { content: { 'application/json': { schema: GapAnalysisRequestSchema } } },
   },

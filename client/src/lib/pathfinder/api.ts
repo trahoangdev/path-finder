@@ -3,6 +3,8 @@ import type {
   AnalyzeResponse,
   ApiErrorPayload,
   HealthResponse,
+  SkillExplainRequest,
+  SkillExplainResponse,
 } from "./types";
 
 /**
@@ -95,6 +97,13 @@ export const pathfinderApi = {
 
   analyze(payload: AnalyzeRequest): Promise<AnalyzeResponse> {
     return request<AnalyzeResponse>("/api/analyze", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  explainSkill(payload: SkillExplainRequest): Promise<SkillExplainResponse> {
+    return request<SkillExplainResponse>("/api/skill-explain", {
       method: "POST",
       body: JSON.stringify(payload),
     });

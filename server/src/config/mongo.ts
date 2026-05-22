@@ -8,7 +8,6 @@ import type {
   RoadmapEdgeDoc,
   SkillDoc,
   SkillTransitionDoc,
-  UserSessionDoc,
 } from '../schemas/index.js';
 
 let client: MongoClient | null = null;
@@ -52,7 +51,6 @@ export async function disconnectMongo(): Promise<void> {
 }
 
 export const collections = {
-  users: () => getDb().collection<UserSessionDoc>('users'),
   jobs: () => getDb().collection<JobDoc>('jobs'),
   skills: () => getDb().collection<SkillDoc>('skills'),
   courses: () => getDb().collection<CourseDoc>('courses'),
@@ -62,7 +60,6 @@ export const collections = {
 } as const;
 
 export type CollectionsMap = {
-  users: Collection<UserSessionDoc>;
   jobs: Collection<JobDoc>;
   skills: Collection<SkillDoc>;
   courses: Collection<CourseDoc>;

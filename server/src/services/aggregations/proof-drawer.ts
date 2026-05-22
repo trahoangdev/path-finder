@@ -27,10 +27,8 @@ export async function proofDrawer({
       total_completed: number;
     }>;
     salary_stats: Array<{
-      median_lift: number;
-      min_lift: number;
-      max_lift: number;
-      avg_months: number;
+      lifts: number[];
+      months: number[];
     }>;
     examples: Array<{
       anon_id: string;
@@ -83,10 +81,8 @@ export async function proofDrawer({
           {
             $group: {
               _id: null,
-              median_lift: { $avg: '$pivots_detected.salary_lift_pct' },
-              min_lift: { $min: '$pivots_detected.salary_lift_pct' },
-              max_lift: { $max: '$pivots_detected.salary_lift_pct' },
-              avg_months: { $avg: '$pivots_detected.months_taken' },
+              lifts: { $push: '$pivots_detected.salary_lift_pct' },
+              months: { $push: '$pivots_detected.months_taken' },
             },
           },
           { $project: { _id: 0 } },
@@ -124,11 +120,10 @@ export async function proofDrawer({
   const conversion_rate =
     conv && conv.total_with_intent > 0 ? conv.total_completed / conv.total_with_intent : 0;
   const salary = raw.salary_stats[0] ?? {
-    median_lift: 0,
-    min_lift: 0,
-    max_lift: 0,
-    avg_months: 0,
+    lifts: [],
+    months: [],
   };
+  const lifts = salary.lifts.map(normalizePct);
 
   const confidence: Confidence = n >= 100 ? 'high' : n >= 30 ? 'medium' : 'low';
 
@@ -136,15 +131,32 @@ export async function proofDrawer({
     sample_size: n,
     conversion_rate,
     salary_stats: {
-      median_lift_pct: salary.median_lift,
-      min_lift_pct: salary.min_lift,
-      max_lift_pct: salary.max_lift,
-      avg_months: salary.avg_months,
+      median_lift_pct: median(lifts),
+      min_lift_pct: lifts.length > 0 ? Math.min(...lifts) : 0,
+      max_lift_pct: lifts.length > 0 ? Math.max(...lifts) : 0,
+      avg_months: average(salary.months),
     },
     example_profiles: raw.examples,
     confidence,
     data_sources: raw.sources.map((s) => s.source),
   };
+}
+
+function normalizePct(value: number): number {
+  return value > 0 && value <= 5 ? value * 100 : value;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid] ?? 0;
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function emptyProof(): ProofDrawerResult {

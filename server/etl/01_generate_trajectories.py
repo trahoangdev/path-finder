@@ -70,7 +70,7 @@ ROLES: dict[str, tuple[list[str], list[str]]] = {
         ["TensorFlow", "Hugging Face", "Kubernetes", "Ray", "Weights & Biases"],
     ),
     "AI Engineer": (
-        ["Python", "PyTorch", "LangChain", "OpenAI API", "Vector Databases"],
+        ["Python", "PyTorch", "LangChain", "LLM API", "Vector Databases"],
         ["Hugging Face", "MongoDB Atlas", "Pinecone", "LlamaIndex", "RAG"],
     ),
     "DevOps Engineer": (
@@ -89,17 +89,18 @@ PIVOT_PATTERNS: list[tuple[str, str, list[str], int, float]] = [
     ("Frontend Developer", "Mobile Developer", ["React Native", "Kotlin"], 10, 0.15),
     ("Backend Developer", "Data Engineer", ["Apache Spark", "Apache Airflow"], 14, 0.25),
     ("Backend Developer", "DevOps Engineer", ["Docker", "Kubernetes", "Terraform"], 12, 0.22),
+    ("Backend Developer", "AI Engineer", ["LangChain", "LLM API", "Vector Databases", "RAG"], 15, 0.36),
     ("Backend Developer", "ML Engineer", ["PyTorch", "MLflow", "Hugging Face"], 18, 0.40),
     ("Backend Developer", "Cloud Engineer", ["AWS", "Terraform", "Kubernetes"], 12, 0.25),
-    ("Full-stack Developer", "AI Engineer", ["LangChain", "OpenAI API", "Vector Databases"], 15, 0.38),
+    ("Full-stack Developer", "AI Engineer", ["LangChain", "LLM API", "Vector Databases"], 15, 0.38),
     ("Full-stack Developer", "DevOps Engineer", ["Kubernetes", "Terraform", "Prometheus"], 11, 0.20),
     ("Data Scientist", "ML Engineer", ["PyTorch", "MLflow", "Docker"], 12, 0.22),
-    ("Data Scientist", "AI Engineer", ["LangChain", "OpenAI API", "RAG"], 14, 0.30),
+    ("Data Scientist", "AI Engineer", ["LangChain", "LLM API", "RAG"], 14, 0.30),
     ("Data Engineer", "ML Engineer", ["PyTorch", "MLflow"], 14, 0.30),
     ("Data Engineer", "AI Engineer", ["LangChain", "Vector Databases", "RAG"], 16, 0.35),
     ("DevOps Engineer", "Cloud Engineer", ["Azure", "GCP", "Helm"], 8, 0.12),
     ("Mobile Developer", "Full-stack Developer", ["React", "Node.js"], 10, 0.18),
-    ("ML Engineer", "AI Engineer", ["LangChain", "OpenAI API", "RAG"], 9, 0.22),
+    ("ML Engineer", "AI Engineer", ["LangChain", "LLM API", "RAG"], 9, 0.22),
 ]
 
 # Country distribution (sums to ~1.0)
