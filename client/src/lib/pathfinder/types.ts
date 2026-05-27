@@ -256,6 +256,8 @@ export interface SalaryBandReport {
   top_companies: SalaryBandCompany[];
   top_required_skills: SalaryBandSkill[];
   source: string;
+  /** Which retrieval path produced the result (Atlas Search or regex). */
+  retrieval?: 'atlas_search' | 'regex_fallback';
 }
 
 export interface PivotSalaryLift {

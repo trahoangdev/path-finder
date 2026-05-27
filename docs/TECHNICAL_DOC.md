@@ -9,8 +9,8 @@
 | **Tác giả** | Hoàng Trọng Trà |
 | **Cuộc thi** | MUGVN × MongoDB Mini Hackathon 2026 |
 | **Chủ đề** | Recommendation Engine sử dụng MongoDB Vector Search + Aggregation Pipeline |
-| **Phiên bản tài liệu** | 3.0 — implementation snapshot |
-| **Cập nhật gần nhất** | 23/05/2026 |
+| **Phiên bản tài liệu** | 3.1 — bổ sung Atlas Search + Hybrid RRF |
+| **Cập nhật gần nhất** | 27/05/2026 |
 | **Kiến trúc** | Monorepo 2 service: `client/` + `server/`, ETL Python phụ trợ |
 
 ---
@@ -44,6 +44,8 @@ Developer Việt Nam liên tục đối diện ba câu hỏi khi muốn chuyển
 | Tôi còn thiếu skill gì để vào role mục tiêu? | Xếp hạng kỹ năng còn thiếu dựa trên cả evidence và semantic similarity | Atlas Vector Search + `$lookup` |
 | Tôi nên học theo lộ trình nào? | Sinh tối đa 3 path: `fast`, `balanced`, `comprehensive` | `$graphLookup` trên graph `role → skill → … → role` |
 | Có bằng chứng nào cho recommendation? | Hiển thị sample size, conversion rate, salary lift, profile mẫu | `$facet` trên `career_trajectories` |
+| Khóa học nào liên quan? | Top course theo cả semantic match và lexical match (skill name canonical) | **Hybrid Search**: `$vectorSearch` ⊕ Atlas `$search` qua `$unionWith` + RRF |
+| Mức lương trên thị trường VN? | Salary band theo level + top company + top skill yêu cầu | Atlas Search `$search` (BM25) + `$facet` |
 
 ### 1.2 PathFinder là một Recommendation Engine
 
@@ -53,8 +55,9 @@ PathFinder phù hợp với chủ đề "Recommendation Engine sử dụng Mongo
 |---|---|---|
 | Skill recommendation (gap) | CV embedding + target embedding + transition graph | `$vectorSearch` trên `skills.description_embedding` + `$lookup` sang `skill_transitions` |
 | Path recommendation | Graph kỹ năng được precompute từ trajectory thật | `$graphLookup` đa hop trên `skill_transitions` |
-| Course recommendation | Embedding của top 3 missing skill + skills_taught | `$vectorSearch` trên `courses.description_embedding` + hybrid ranking |
+| Course recommendation | Embedding + tên skill canonical | **Hybrid Search**: `$vectorSearch` ⊕ `$search` (Atlas Search) qua `$unionWith` + Reciprocal Rank Fusion |
 | Peer recommendation (similar developer) | Embedding snapshot CV, fallback overlap kỹ năng | `$vectorSearch` trên `career_trajectories.snapshots.cv_embedding`, fallback `$reduce` + `$setIntersection` |
+| Salary band (market context) | Title role + top missing skills | **Atlas Search** `$search` (BM25, `compound.should`) trên `jobs` + `$facet`, fallback `$regex` |
 
 Tất cả recommendation đều có cơ chế **provenance** (ghi rõ nguồn dữ liệu) và **honest mode** (cảnh báo khi dữ liệu nhỏ).
 
@@ -62,20 +65,22 @@ Tất cả recommendation đều có cơ chế **provenance** (ghi rõ nguồn d
 flowchart LR
     CV["CV input + target role"]:::input
 
-    subgraph Reco["4 trụ recommendation"]
+    subgraph Reco["5 trụ recommendation"]
       direction TB
       R1["Skill gap<br/>$vectorSearch + $lookup"]
       R2["Pivot path<br/>$graphLookup"]
-      R3["Course<br/>$vectorSearch + hybrid rank"]
+      R3["Course<br/>Hybrid: $vectorSearch ⊕ $search (RRF)"]
       R4["Similar devs<br/>$vectorSearch | $setIntersection"]
+      R5["Salary band<br/>$search (BM25) + $facet"]
     end
 
-    CV --> R1 & R2 & R3 & R4
+    CV --> R1 & R2 & R3 & R4 & R5
 
     R1 --> OUT["AnalyzeResponse<br/>+ provenance + honest mode"]
     R2 --> OUT
     R3 --> OUT
     R4 --> OUT
+    R5 --> OUT
 
     classDef input fill:#1e3a8a,stroke:#1e40af,color:#fff
 ```
@@ -92,8 +97,8 @@ flowchart LR
 | Trajectory graph UI (`@xyflow/react`) | Đã có |
 | Proof drawer (sample size, conversion, salary stats, examples) | Đã có |
 | Similar developers (vector + skill-overlap fallback) | Đã có |
-| Course recommendation (semantic + token + exact match) | Đã có |
-| VN salary band (`jobs` collection, ITViec sample) | Đã có |
+| Course recommendation (Hybrid Search: Vector ⊕ Atlas Search via RRF) | Đã có |
+| VN salary band (`jobs` collection, ITViec sample, Atlas Search BM25) | Đã có |
 | Salary inference sau pivot | Đã có |
 | Skill explain drawer (transparency: hiển thị aggregation pipeline) | Đã có |
 | Honest mode + i18n VI/EN + theme switcher | Đã có |
@@ -232,8 +237,8 @@ sequenceDiagram
     API->>AI: embedBatch(top 3 missing skills)
 
     par Phase 2 (parallel)
-      API->>DB: recommendCourses() — vector + hybrid rank
-      API->>DB: salaryBand() — $facet on jobs
+      API->>DB: recommendCourses() — Hybrid: $vectorSearch ⊕ $search via $unionWith + RRF
+      API->>DB: salaryBand() — $search (BM25) + $facet on jobs
       API->>DB: salaryInference() — $unwind + $group on pivots
     end
 
@@ -293,8 +298,8 @@ LLM hay sinh title như `Tech Lead`, `Senior Software Engineer`, `Software Archi
 | `jobs` | JD/salary sample Việt Nam | Có |
 | `career_trajectories` | Cohort trajectory + pivot events | Có |
 | `skill_transitions` | Graph edge precompute từ trajectory | Có |
-| `roadmap_edges` | Cạnh roadmap.sh hỗ trợ taxonomy | ETL phụ trợ |
-| `users` | Schema/index TTL cho session | Khai báo, runtime chưa ghi |
+| `roadmap_edges` | Cạnh roadmap.sh hỗ trợ taxonomy | ETL phụ trợ (không query trực tiếp ở runtime) |
+| `users` | Schema profile được LLM trả về (`UserSkill`) | In-memory only — chưa có collection thật trên Atlas |
 
 ### 4.2 ER diagram
 
@@ -471,6 +476,34 @@ from_role → skill_1 → skill_2 → … → skill_n → to_role
 
 Index unique trên `(from_skill, to_skill)` đảm bảo `$out` của step 7 idempotent.
 
+#### `roadmap_edges`
+
+Lưu các cạnh ReactFlow của roadmap.sh — dùng làm taxonomy phụ khi step 03 cần biết một concept thuộc nhóm con nào của một roadmap (ví dụ "Vector Search" thuộc roadmap "AI Engineer"). Runtime không query trực tiếp; vai trò chính là input cho ETL bước 03 và 07.
+
+| Field | Kiểu | Mục đích |
+|---|---|---|
+| `roadmap_slug` | string | Slug của roadmap nguồn (`ai-engineer`, `backend`, …) |
+| `roadmap_title` | string (optional) | Tên hiển thị của roadmap |
+| `source_node_id` / `target_node_id` | string | ID node trong file ReactFlow của roadmap.sh |
+| `from_label` / `to_label` | string | Label canonical của hai node — đây là cái match với `skills.name` |
+| `computed_at` | date (optional) | Thời điểm scrape |
+
+Compound index `(roadmap_slug, source_node_id)` để lookup nhanh khi traverse roadmap; index thứ hai chỉ trên `roadmap_slug` cho aggregation theo nhóm.
+
+Schema chính thức ở `server/src/schemas/roadmap.ts` (`RoadmapEdgeDocSchema`).
+
+#### `users` (chỉ là shape của profile — không phải collection persisted)
+
+Trái với cảm tưởng từ tên file, `users` **không** phải là collection runtime. Schema này chỉ định nghĩa shape của một skill mà LLM trả về sau khi parse CV (`UserSkill`):
+
+| Field | Kiểu | Mục đích |
+|---|---|---|
+| `name` | string (≥1 ký tự) | Tên skill |
+| `level` | enum `beginner` / `intermediate` / `advanced` | Mức thành thạo |
+| `years` | number `[0, 50]` | Số năm kinh nghiệm với skill |
+
+Orchestrator runtime stateless: object `ExtractedProfile` được build trong memory và gắn thẳng vào `AnalyzeResponse`, không insert vào Atlas. Khi nào bật session persistence sẽ cần thêm `users` collection thật + TTL index — tham khảo §10.5 để biết giới hạn hiện tại.
+
 ### 4.4 Vì sao chọn MongoDB
 
 | Nhu cầu | Lợi ích MongoDB |
@@ -597,44 +630,101 @@ Pre-computed graph là nguồn cao tin cậy nhất: skill nào đã giúp ngư�
 
 Service-side dedupe theo `normalizeSkillKey` (lowercase, strip non-alphanum), evidence row luôn thắng semantic row. Sau đó loại bỏ skill user đã có. Kết quả trả về có `similarity` đã chuẩn hóa, `transition` đính kèm để UI hiển thị tháng học và salary lift dự kiến.
 
-### 5.3 Course recommendation (hybrid ranking)
+### 5.3 Course recommendation — Hybrid Search (Vector + Atlas Search + RRF)
 
 File: `server/src/services/vector-search/courses.ts`.
 
+Bản triển khai theo đúng pattern *"Perform Hybrid Search with MongoDB Vector Search and MongoDB Search"* trong tài liệu chính thức: hai retrieval lane (vector + lexical) chạy song song, mỗi lane sinh thứ hạng riêng, kết quả được hợp nhất bằng **Reciprocal Rank Fusion (RRF)**:
+
+$$\text{score}(d) = \sum_{lane}\frac{w_{lane}}{k + \text{rank}_{lane}(d)} \quad (k = 60)$$
+
+```mermaid
+flowchart LR
+    Q["skill_name + skill_embedding"]:::q
+
+    subgraph LaneA["Lane A — Semantic"]
+      A1["$vectorSearch on courses.description_embedding<br/>numCandidates ≈ 10× pool"]
+      A2["$group → $unwind w/ rank<br/>contribution = 0.6 / (60 + rank)"]
+    end
+
+    subgraph LaneB["Lane B — Lexical (Atlas Search)"]
+      B1["$search compound.should:<br/>• skills_taught (boost 5)<br/>• title (boost 3)<br/>• description"]
+      B2["$group → $unwind w/ rank<br/>contribution = 0.4 / (60 + rank)"]
+    end
+
+    Q --> A1 --> A2
+    Q --> B1 --> B2
+
+    A2 --> U["$unionWith merges both lanes"]
+    B2 --> U
+    U --> F["$group by _id<br/>$sum contributions = rrf_score"]
+    F --> S["$sort rrf_score desc + $limit"]
+    S --> O["CoursePublic[] (similarity = rrf_score)"]
+
+    classDef q fill:#1e3a8a,stroke:#3b82f6,color:#fff
+```
+
 ```js
+// Rút gọn — bỏ qua $project cuối
 [
+  // Lane A: vector
   { $vectorSearch: {
       index: env.VECTOR_INDEX_COURSES,
       path: 'description_embedding',
       queryVector: skill_embedding,
-      numCandidates: Math.max(100, limit * 20),
-      limit: Math.max(limit * 5, 15),
+      numCandidates: Math.max(candidatePool * 10, 200),
+      limit: candidatePool,
       filter: { $or: [
-        { is_mongodb_official: true },
-        { price_usd: 0 },
-        { price_usd: { $lte: 50 } }
+        { is_mongodb_official: true }, { price_usd: 0 }, { price_usd: { $lte: 50 } }
       ]}
   }},
-  { $addFields: {
-      similarity: { $meta: 'vectorSearchScore' },
-      exact_match: { $cond: [
-        { $in: [skill_name, { $ifNull: ['$skills_taught', []] }] }, 1, 0
-      ]}
+  { $group: { _id: null, docs: { $push: { doc: '$$ROOT', score: { $meta: 'vectorSearchScore' } } } } },
+  { $unwind: { path: '$docs', includeArrayIndex: 'rank' } },
+  { $project: {
+      _id: '$docs.doc._id', doc: '$docs.doc',
+      rrf_contribution: { $divide: [0.6, { $add: [60, '$rank'] }] }
   }},
-  { $addFields: {
-      token_match: { $cond: [
-        { $regexMatch: {
-            input: { $concat: [{ $toLower: '$title' }, ' ', { $toLower: '$description' }] },
-            regex: tokens.join('|')
-        }}, 1, 0
-      ]}
+
+  // Lane B: lexical $search, merged via $unionWith
+  { $unionWith: {
+      coll: 'courses',
+      pipeline: [
+        { $search: {
+            index: env.SEARCH_INDEX_COURSES,
+            compound: {
+              should: [
+                { text: { query: skill_name, path: 'skills_taught', score: { boost: { value: 5 } } } },
+                { text: { query: skill_name, path: 'title',         score: { boost: { value: 3 } } } },
+                { text: { query: skill_name, path: 'description' } }
+              ],
+              minimumShouldMatch: 1
+            }
+        }},
+        // Cùng pre-filter giá/official như lane vector
+        { $match: { $or: [
+          { is_mongodb_official: true }, { price_usd: 0 }, { price_usd: { $lte: 50 } }
+        ]}},
+        { $limit: candidatePool },
+        { $group: { _id: null, docs: { $push: '$$ROOT' } } },
+        { $unwind: { path: '$docs', includeArrayIndex: 'rank' } },
+        { $project: {
+            _id: '$docs._id', doc: '$docs',
+            rrf_contribution: { $divide: [0.4, { $add: [60, '$rank'] }] }
+        }}
+      ]
   }},
-  { $sort: { exact_match: -1, token_match: -1, similarity: -1 } },
-  { $limit: limit }
+
+  // Fuse
+  { $group: { _id: '$_id', doc: { $first: '$doc' }, rrf_score: { $sum: '$rrf_contribution' } } },
+  { $sort: { rrf_score: -1 } },
+  { $limit: limit },
+  { $replaceWith: { $mergeObjects: ['$doc', { rrf_score: '$rrf_score' }] } }
 ]
 ```
 
-Đây là **hybrid ranking** ba tầng: exact match → token match → semantic similarity. Nhờ vậy khi catalog dùng tên canonical (`Vector Search`) còn gap output là semantic neighbour (`Vector Database`), kết quả vẫn trả về relevant thay vì rỗng.
+Trọng số `(0.6 / 0.4)` ưu tiên semantic nhưng vẫn để lexical "cứu" những trường hợp embedding lệch khỏi tên canonical. Field `similarity` trả về client thực chất là `rrf_score` (đã chuẩn hóa) để giữ nguyên contract cũ.
+
+**Fallback (vector-only)** — nếu Atlas Search index `courses_text_search` chưa tồn tại (cluster local hoặc chưa chạy `06_create_indexes.py`), service tự động bắt lỗi và degrade về `$vectorSearch` đơn lane với một soft boost `exact_match` trên `skills_taught`.
 
 ### 5.4 Similar developers
 
@@ -662,7 +752,9 @@ flowchart TB
     index: env.VECTOR_INDEX_TRAJECTORIES,
     path: 'snapshots.cv_embedding',
     queryVector: cv_embedding,
-    numCandidates: limit * 4,
+    // 10–20× limit theo khuyến nghị Atlas Vector Search; floor 200 cho
+    // limit nhỏ.
+    numCandidates: Math.max(limit * 15, 200),
     limit,
     filter: { country: { $in: ['Vietnam','Singapore','SEA','Thailand','Indonesia','Malaysia','Philippines'] } }
 }}
@@ -695,9 +787,27 @@ Khi snapshot chưa được embed (dataset hiện đang dùng `$reduce` flatten 
 ### 5.5 Vì sao Atlas Vector Search
 
 - Cho phép **filter pre-search**, giảm số candidate phải tính cosine.
-- `numCandidates` lớn (~30× limit) đảm bảo recall ≥95% theo benchmark Atlas.
+- `numCandidates` lớn (~10–20× limit theo khuyến nghị docs) đảm bảo recall ≥95% theo benchmark Atlas.
 - `$meta: 'vectorSearchScore'` cho score 0..1, dễ kết hợp với heuristic khác.
 - Index nằm cùng collection với metadata, không cần đồng bộ chéo Vector DB.
+
+### 5.6 Atlas Search (Full-Text Search) — `$search`
+
+Bên cạnh Vector Search, project cũng dùng **Atlas Search** (Lucene-backed full-text search) để bổ sung khả năng tokenization, BM25 ranking và fuzzy match — những thứ vector search một mình không tối ưu.
+
+| Index | Collection | Mappings | Phục vụ |
+|---|---|---|---|
+| `jobs_text_search` | `jobs` | `title` (lucene.standard), `required_skills`/`company`/`level`/`location` (lucene.keyword), `description` (lucene.standard) | Salary band — `compound.should` tìm JD theo role + skill |
+| `courses_text_search` | `courses` | `title`/`description` (lucene.standard), `skills_taught`/`provider`/`level` (lucene.keyword) | Hybrid course search — lane lexical trong RRF fusion |
+
+Định nghĩa nằm trong `server/etl/06_create_indexes.py`, dùng PyMongo `SearchIndexModel(definition=..., name=..., type='search')`.
+
+Lý do giữ song song với Vector Search:
+
+- **Tokenization** — `lucene.standard` chia "AI/ML Engineer" thành các token có nghĩa, regex thô không làm được.
+- **Exact taxonomy hit** — `lucene.keyword` cho phép khớp đúng tên skill canonical như "Vector Search" (không bị trộn với "Search" generic).
+- **Scoring chuẩn** — BM25 cho score relative ranked, dùng được trong RRF fusion với vector score.
+- **Tài liệu chính thức** — `$search` và `$vectorSearch` được MongoDB cung cấp như hai mặt bổ trợ; hybrid search là pattern khuyến nghị cho RAG-style recommendation.
 
 ---
 
@@ -841,45 +951,51 @@ Sau đó:
 - `median_lift_pct` tính chính xác (sort + lấy giữa) trong service code; `min`/`max` cũng từ mảng `lifts`.
 - `data_sources` cho UI gắn badge nguồn (`synthetic_vn`, `itviec_sample`, …).
 
-### 6.3 Salary band bằng `$facet` 4 nhánh
+### 6.3 Salary band — Atlas Search (`$search`) + `$facet`
 
 File: `server/src/services/aggregations/salary-band.ts`.
 
-Bộ lọc: regex theo title alias (`AI Engineer | LLM | GenAI | …`) **hoặc** overlap với top missing skills.
+Trước đây stage đầu là `$match` với `$regex` thô trên `title`. Bản hiện tại dùng **Atlas Search `$search`** với `compound.should` để có Lucene tokenization và BM25 ranking. Nhánh fallback `$regex` được giữ lại cho cluster chưa có Atlas Search index.
+
+```mermaid
+flowchart TB
+    IN["target_role + target_skills"] --> P{"Atlas Search index<br/>jobs_text_search có?"}
+    P -- Yes --> S1["$search compound.should<br/>• text on title (boost 5)<br/>• text on required_skills (boost 3)<br/>minimumShouldMatch: 1"]
+    P -- No --> R1["$match $or:<br/>• title $regex<br/>• required_skills $in"]
+
+    S1 --> F["$facet<br/>by_level | top_companies | top_skills | overall"]
+    R1 --> F
+    F --> O["SalaryBandResult<br/>+ retrieval flag"]
+```
 
 ```js
+// Primary path
 [
-  { $match: filter },
+  { $search: {
+      index: env.SEARCH_INDEX_JOBS,
+      compound: {
+        should: [
+          { text: { query: keywords, path: 'title',
+                    score: { boost: { value: 5 } } } },
+          { text: { query: target_skills, path: 'required_skills',
+                    score: { boost: { value: 3 } } } }
+        ],
+        minimumShouldMatch: 1
+      }
+  }},
+  { $addFields: { search_score: { $meta: 'searchScore' } } },
   { $facet: {
-      by_level: [
-        { $group: {
-            _id: '$level', count: { $sum: 1 },
-            median_min: { $avg: '$salary_min' }, median_max: { $avg: '$salary_max' },
-            min_vnd: { $min: '$salary_min' }, max_vnd: { $max: '$salary_max' }
-        }},
-        { $sort: { median_max: 1 } }
-      ],
-      top_companies: [
-        { $sort: { salary_max: -1 } },
-        { $group: { _id: '$company', count: { $sum: 1 },
-            top_title: { $first: '$title' }, top_level: { $first: '$level' } } },
-        { $sort: { count: -1 } },
-        { $limit: 5 }
-      ],
-      top_skills: [
-        { $unwind: '$required_skills' },
-        { $group: { _id: '$required_skills', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 8 }
-      ],
-      overall: [
-        { $group: { _id: null, n: { $sum: 1 },
-            median_min: { $avg: '$salary_min' }, median_max: { $avg: '$salary_max' },
-            min_vnd: { $min: '$salary_min' }, max_vnd: { $max: '$salary_max' } } }
-      ]
+      by_level: [ /* $group level + avg/min/max + $sort */ ],
+      top_companies: [ /* $sort + $group company + $limit 5 */ ],
+      top_skills: [ /* $unwind required_skills + $group + $limit 8 */ ],
+      overall: [ /* $group null + n/avg/min/max */ ]
   }}
 ]
 ```
+
+`keywords` là tập alias title cho role (`'AI Engineer AI/ML LLM Generative AI GenAI'`), `target_skills` là top missing skill từ gap analysis. `compound.should` + `minimumShouldMatch: 1` thay cho `$or` cũ — JD chỉ cần khớp một trong hai signal là vào pool, nhưng score cao hơn khi khớp cả hai.
+
+Response có thêm field `retrieval: 'atlas_search' | 'regex_fallback'` để client gắn badge "matched via Atlas Search BM25" khi có.
 
 ### 6.4 Salary inference bằng `$unwind` + `$group`
 
@@ -976,12 +1092,16 @@ Sau khi expand, `$group` theo `(from_skill, to_skill, edge_kind)`:
 |---|---|
 | `$match` | Mọi pipeline |
 | `$project` | Mọi pipeline |
+| `$search` (Atlas Search) | Salary band (BM25 trên title + required_skills), Course recommendation (lane lexical) |
+| `$vectorSearch` (Atlas Vector Search) | Gap analysis, Course recommendation (lane semantic), Similar devs |
+| `$unionWith` | Hybrid course search — gộp lane vector và lane lexical |
 | `$lookup` (with `let` + pipeline) | Gap analysis (skills × skill_transitions) |
 | `$facet` | Proof drawer (5 facet), salary band (4 facet) |
 | `$graphLookup` | Pivot path multi-hop |
-| `$unwind` | Salary inference, salary band top_skills, skill explain |
-| `$group` | Mọi aggregation cuối cùng |
-| `$addFields` / `$cond` / `$switch` | Confidence bucketing, hybrid ranking, fraction normalization |
+| `$unwind` (incl. `includeArrayIndex`) | Salary inference, salary band top_skills, skill explain, RRF rank generation |
+| `$group` | Mọi aggregation cuối cùng + RRF fusion |
+| `$replaceWith` / `$mergeObjects` | RRF — khôi phục document gốc sau fusion |
+| `$addFields` / `$cond` / `$switch` | Confidence bucketing, fraction normalization |
 | `$reduce` + `$setIntersection` + `$setUnion` | Similar devs fallback |
 | `$sample` | Proof drawer examples |
 | `$concatArrays` + `$map` + `$range` | ETL build graph edges |
@@ -1153,7 +1273,7 @@ Khi click vào missing skill, frontend gọi `POST /api/skill-explain` và rende
 | 3 | `03_load_skills_roadmap.py` | `skills` + `roadmap_edges` từ roadmap.sh | 30–60 s |
 | 4 | `04_load_courses.py` | ~30 courses (MongoDB University + Coursera/Udemy/freeCodeCamp) | ~2 s |
 | 5 | `05_embed_all.py` | Embedding 768-dim cho courses, jobs, skills, snapshot trajectory | 2–30 phút |
-| 6 | `06_create_indexes.py` | Regular index + 4 vector index | 1–2 phút |
+| 6 | `06_create_indexes.py` | Regular index + 4 vector index + 2 Atlas Search index | 1–3 phút |
 | 7 | `07_compute_transitions.py` | Graph `skill_transitions` (`$out`) | ~5 s |
 
 ```mermaid
@@ -1175,7 +1295,7 @@ flowchart LR
 
     S5["05 embed_all<br/>OpenAI 768-dim<br/>(fallback hash)"]:::embed
     S5 --> S6
-    S6["06 create_indexes<br/>regular + 4 vector"]:::idx
+    S6["06 create_indexes<br/>regular + 4 vector + 2 search"]:::idx
     S6 --> S7
     S7["07 compute_transitions<br/>$concatArrays + $out"]:::graph
     S7 --> ST[("skill_transitions")]
@@ -1226,7 +1346,16 @@ Switch flag: `EMBED_FORCE_DETERMINISTIC=1` (cho CI/offline), `WIPE_EXISTING_EMBE
 
 Mỗi index có `{ type: 'vector', numDimensions: 768, similarity: 'cosine' }` cộng với mảng `filter` paths khai báo tường minh (Atlas Vector Search yêu cầu).
 
-Trên Atlas M0/M2/M5, giới hạn 3 search index/cluster khiến script ưu tiên tạo theo thứ tự: `skills` → `courses` → `trajectories` → `jobs`. Index trễ sẽ skip kèm warning.
+Trên Atlas M0/M2/M5, giới hạn 3 search index/cluster (đếm chung cả Atlas Search và Vector Search) khiến script ưu tiên tạo theo thứ tự: `skills` → `courses` → `trajectories` → `jobs`. Index trễ sẽ skip kèm warning. Khi đã thêm 2 Atlas Search index runtime đang dùng (`jobs_text_search` + `courses_text_search`), nếu cluster chạm quota nên cân nhắc bỏ `vec_jobs_desc` (chưa có route nào query) để giải phóng slot.
+
+#### Atlas Search index (full-text, Lucene)
+
+| Index | Collection | Mục đích | Stage trong code |
+|---|---|---|---|
+| `jobs_text_search` | `jobs` | Salary band — match title + required_skills theo BM25 | `salaryBand` `$search compound.should` |
+| `courses_text_search` | `courses` | Hybrid course search — lane lexical | `recommendCourses` `$search compound.should` (qua `$unionWith`) |
+
+Cả hai dùng `mappings.dynamic: false` với khai báo field tường minh: text fields (`title`, `description`) tokenize bằng `lucene.standard`, taxonomy fields (`skills_taught`, `required_skills`, `company`, `level`, `location`) dùng `lucene.keyword` để giữ exact match.
 
 Cơ chế re-create an toàn:
 
@@ -1280,7 +1409,7 @@ URL local:
 - Rich target prompt (`TARGET_HINTS`) giúp embedding của target bám stack thật, tăng recall.
 - `embedBatch` một call cho top 3 missing skill thay vì 3 call song song.
 - Pre-filter trên `$vectorSearch` (category, price, country) → giảm candidate.
-- Hybrid ranking exact > token > semantic cho course (relevance > recall).
+- Hybrid Search cho course bằng RRF (vector ⊕ Atlas `$search`) — tận dụng cả semantic recall và lexical precision trong một pipeline.
 - Server stateless → scale horizontally không cần sticky session.
 - DNS prefetch + connection pool pre-warm cho MongoDB Atlas.
 
@@ -1319,8 +1448,9 @@ flowchart TB
 - Zod validate cả request body lẫn response, từ chối input không hợp lệ tại biên.
 - OpenAI key chỉ ở server, không leak xuống client.
 - Orchestrator stateless: không persist CV → giảm risk privacy.
-- TTL index đã khai báo trên `users.ttl_expires_at` cho khi bật session persistence.
 - Compress chỉ bật ở production để tránh BREACH attack vector ở dev.
+
+> Note: `users` collection và TTL session vẫn ở dạng schema dự kiến — runtime hiện không persist CV của user, do đó không cần TTL job ở giai đoạn này.
 
 ### 10.5 Giới hạn hiện tại
 
@@ -1328,7 +1458,7 @@ flowchart TB
 |---|---|
 | Trajectory là synthetic | Phải ghi rõ `source: synthetic_vn` trong UI |
 | `snapshots.cv_embedding` chưa được populate đầy đủ | Similar devs đang chạy fallback aggregation |
-| `users` collection chưa được orchestrator dùng | Không có session persistence runtime |
+| `users` collection chưa được orchestrator dùng | Không có session persistence runtime; profile chỉ tồn tại trong memory của request |
 | `RATE_LIMIT_PER_MINUTE` mới khai báo trong env, chưa có middleware enforce | Cần thêm middleware khi mở public |
 
 ---
@@ -1347,9 +1477,10 @@ flowchart TB
 | ADR-08 | Role normalizer | Chặn mismatch giữa title tự do của LLM và label dataset |
 | ADR-09 | `@xyflow/react` cho trajectory graph | Sẵn pan/zoom/minimap, custom node/edge |
 | ADR-10 | Orchestrator stateless | Scale horizontal, giảm rủi ro privacy |
-| ADR-11 | Hybrid ranking cho course | Combine exact → token → semantic, tránh rỗng kết quả |
+| ADR-11 | Hybrid Search cho course bằng RRF | Áp dụng pattern chính thức: `$vectorSearch` ⊕ `$search` qua `$unionWith` + Reciprocal Rank Fusion. Bỏ heuristic exact/token tự xây |
 | ADR-12 | `$facet` cho proof drawer + salary band | 1 round-trip thay vì 4 query |
 | ADR-13 | Skill explain trả về pipeline thật | Radical transparency cho judge audit |
+| ADR-14 | Atlas Search `$search` thay `$regex` ở salary band | BM25 ranking, tokenization, có fallback regex khi index thiếu |
 
 ---
 
@@ -1431,6 +1562,10 @@ VECTOR_INDEX_COURSES=vec_courses_desc
 VECTOR_INDEX_JOBS=vec_jobs_desc
 VECTOR_INDEX_TRAJECTORIES=vec_trajectory_snapshot
 
+# Atlas Search (Lucene full-text) — overrides for $search index names
+SEARCH_INDEX_JOBS=jobs_text_search
+SEARCH_INDEX_COURSES=courses_text_search
+
 RATE_LIMIT_PER_MINUTE=60
 ```
 
@@ -1477,6 +1612,26 @@ NEXT_PUBLIC_PATHFINDER_API_URL=http://localhost:4000
 }
 ```
 
+Định nghĩa Atlas Search (full-text) index:
+
+```json
+{
+  "name": "jobs_text_search",
+  "type": "search",
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "title":            { "type": "string", "analyzer": "lucene.standard" },
+      "required_skills":  { "type": "string", "analyzer": "lucene.keyword" },
+      "description":      { "type": "string", "analyzer": "lucene.standard" },
+      "company":          { "type": "string", "analyzer": "lucene.keyword" },
+      "level":            { "type": "string", "analyzer": "lucene.keyword" },
+      "location":         { "type": "string", "analyzer": "lucene.keyword" }
+    }
+  }
+}
+```
+
 ### 13.4 Ví dụ payload `MissingSkill`
 
 ```json
@@ -1496,4 +1651,4 @@ NEXT_PUBLIC_PATHFINDER_API_URL=http://localhost:4000
 
 ---
 
-**End of Technical Document v3.0**
+**End of Technical Document v3.1**

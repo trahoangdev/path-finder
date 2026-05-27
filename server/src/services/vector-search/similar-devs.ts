@@ -42,7 +42,12 @@ export async function similarDevs({
           index: env.VECTOR_INDEX_TRAJECTORIES,
           path: 'snapshots.cv_embedding',
           queryVector: cv_embedding,
-          numCandidates: limit * 4,
+          // MongoDB recommends `numCandidates` ≈ 10–20× `limit` for ANN
+          // recall: anything lower trades quality for tail latency we don't
+          // need on this collection size. Floor at 200 so small `limit`
+          // values (e.g. limit=10 from a UI variant) still see a healthy
+          // candidate pool.
+          numCandidates: Math.max(limit * 15, 200),
           limit,
           filter: {
             country: { $in: ['Vietnam', 'Singapore', 'SEA', 'Thailand', 'Indonesia', 'Malaysia', 'Philippines'] },

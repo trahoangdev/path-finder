@@ -352,6 +352,13 @@ export const SalaryBandReportSchema = z
     top_companies: z.array(SalaryBandCompanySchema),
     top_required_skills: z.array(SalaryBandSkillSchema),
     source: z.string(),
+    /**
+     * Which retrieval path produced the result. `atlas_search` means the
+     * Lucene-backed `$search` index served the query (BM25 ranking);
+     * `regex_fallback` means the index was unavailable and the legacy
+     * `$match` + `$regex` pipeline was used instead.
+     */
+    retrieval: z.enum(['atlas_search', 'regex_fallback']).default('regex_fallback'),
   })
   .openapi('SalaryBandReport');
 

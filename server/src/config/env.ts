@@ -26,6 +26,10 @@ const EnvSchema = z.object({
   VECTOR_INDEX_JOBS: z.string().default('vec_jobs_desc'),
   VECTOR_INDEX_TRAJECTORIES: z.string().default('vec_trajectory_snapshot'),
 
+  // Atlas Search (Lucene) indexes — used by `$search` stages.
+  SEARCH_INDEX_JOBS: z.string().default('jobs_text_search'),
+  SEARCH_INDEX_COURSES: z.string().default('courses_text_search'),
+
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(60),
 });
 
