@@ -73,6 +73,59 @@ VECTOR_INDEX_SPECS: list[tuple[str, str, str, str, list[str]]] = [
 ]
 
 
+# Atlas Search (Lucene) index specs — used by the server's `$search` stages.
+# Uses the standard `search` index type with a static mapping declaring the
+# fields we want tokenized + indexed for BM25 ranking.
+#
+# Reference: https://www.mongodb.com/docs/atlas/atlas-search/define-field-mappings/
+SEARCH_INDEX_SPECS: list[tuple[str, str, str, dict[str, Any]]] = [
+    (
+        "jobs",
+        "SEARCH_INDEX_JOBS",
+        "jobs_text_search",
+        {
+            "mappings": {
+                "dynamic": False,
+                "fields": {
+                    "title": {"type": "string", "analyzer": "lucene.standard"},
+                    "required_skills": {
+                        "type": "string",
+                        "analyzer": "lucene.keyword",
+                    },
+                    "description": {"type": "string", "analyzer": "lucene.standard"},
+                    "company": {"type": "string", "analyzer": "lucene.keyword"},
+                    "level": {"type": "string", "analyzer": "lucene.keyword"},
+                    "location": {"type": "string", "analyzer": "lucene.keyword"},
+                },
+            }
+        },
+    ),
+    (
+        "courses",
+        "SEARCH_INDEX_COURSES",
+        "courses_text_search",
+        {
+            "mappings": {
+                "dynamic": False,
+                "fields": {
+                    "title": {"type": "string", "analyzer": "lucene.standard"},
+                    "description": {"type": "string", "analyzer": "lucene.standard"},
+                    # `skills_taught` is the canonical taxonomy — keep it as
+                    # exact-match keyword so "Vector Search" doesn't match
+                    # "Search" generically.
+                    "skills_taught": {
+                        "type": "string",
+                        "analyzer": "lucene.keyword",
+                    },
+                    "provider": {"type": "string", "analyzer": "lucene.keyword"},
+                    "level": {"type": "string", "analyzer": "lucene.keyword"},
+                },
+            }
+        },
+    ),
+]
+
+
 def regular_indexes() -> None:
     db = get_db()
 
@@ -208,9 +261,54 @@ def vector_indexes() -> None:
             log.warning("%s on %s is still building — check Atlas UI", idx_name, coll_name)
 
 
+def search_indexes() -> None:
+    """Create Atlas Search (Lucene) indexes for `$search` stages."""
+    db = get_db()
+    for coll_name, env_key, default_name, definition in SEARCH_INDEX_SPECS:
+        idx_name = os.getenv(env_key, default_name)
+        coll = db[coll_name]
+
+        existing = _existing_index(coll, idx_name)
+        if existing is not None:
+            existing_def = (
+                existing.get("latestDefinition")
+                or existing.get("definition")
+                or {}
+            )
+            if (
+                existing_def.get("mappings") == definition["mappings"]
+                and existing.get("type") in (None, "search")
+            ):
+                log.info(
+                    "✓ Search index %s on %s already up-to-date", idx_name, coll_name
+                )
+                continue
+            _drop_and_wait(coll, idx_name)
+
+        try:
+            # `type` defaults to "search" for Lucene/Atlas Search indexes;
+            # passing it explicitly stays compatible with newer PyMongo too.
+            model = SearchIndexModel(definition=definition, name=idx_name, type="search")
+            coll.create_search_index(model=model)
+            log.info("✓ Search index %s created on %s", idx_name, coll_name)
+        except Exception as e:
+            log.warning(
+                "Could not auto-create %s on %s (%s).\n"
+                "  Create manually in Atlas UI → 'Atlas Search' tab with JSON:\n%s",
+                idx_name, coll_name, e, definition,
+            )
+            continue
+
+        if _wait_ready(coll, idx_name, timeout_s=180):
+            log.info("✓ %s is READY on %s", idx_name, coll_name)
+        else:
+            log.warning("%s on %s is still building — check Atlas UI", idx_name, coll_name)
+
+
 def main() -> None:
     regular_indexes()
     vector_indexes()
+    search_indexes()
 
 
 if __name__ == "__main__":

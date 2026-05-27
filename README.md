@@ -1,6 +1,6 @@
 # PathFinder
 
-> **Career Pivot Engine for Vietnamese developers.** Tells you the next skill that unlocks the role you actually want, grounded in calibrated career trajectories, curated VN job data, MongoDB Atlas Vector Search, and Aggregation Pipelines.
+> **Career Pivot Engine for Vietnamese developers.** Tells you the next skill that unlocks the role you actually want, grounded in calibrated career trajectories, curated VN job data, MongoDB Atlas Vector Search, **Atlas Search** and Aggregation Pipelines.
 
 | | |
 |---|---|
@@ -22,11 +22,12 @@ PathFinder is a recommendation engine that answers three questions for a develop
 | *"Which skills am I missing to land the target role?"* | Vector search the skill taxonomy against a target-role embedding + cross-reference with `skill_transitions` evidence | **Atlas Vector Search** + `$lookup` |
 | *"What's the shortest path from where I am to where I want to be?"* | Recursive traversal over a pre-computed `role → skill → skill → role` graph, returns 3 flavors (`fast` / `balanced` / `comprehensive`) | **`$graphLookup`** |
 | *"Has anyone actually pulled this off? What did it pay?"* | Single `$facet` over career trajectories returns sample size, conversion %, salary lift, examples | **Aggregation `$facet`** |
+| *"What's the salary range on the VN market?"* | `$search` on `jobs` (BM25 over `title` + `required_skills`) feeding a `$facet` for level / company / top skills | **Atlas Search** + `$facet` |
 
 Two more recommendations round out the engine:
 
-- **Course recommendation** — `$vectorSearch` on `courses.description_embedding` with hybrid ranking (exact match → token match → semantic similarity).
-- **Similar developers** — `$vectorSearch` on `career_trajectories.snapshots.cv_embedding` with a `$reduce` + `$setIntersection` aggregation fallback.
+- **Course recommendation** — true **Hybrid Search**: `$vectorSearch` on `courses.description_embedding` ⊕ Atlas `$search` on `title` / `skills_taught` / `description`, fused via Reciprocal Rank Fusion (`$unionWith` + `$group`).
+- **Similar developers** — `$vectorSearch` on `career_trajectories.snapshots.cv_embedding` (`numCandidates ≈ 15× limit` per docs) with a `$reduce` + `$setIntersection` aggregation fallback.
 
 All cards on the dashboard carry an **Honest Mode** badge: trustworthy when `N ≥ 30`, low confidence between `10..29`, fully hidden when `N < 10`. Recommendations refuse to guess.
 
@@ -104,7 +105,7 @@ Pipeline summary (see `server/etl/README.md` for the long version):
 | 03 | `03_load_skills_roadmap.py` | roadmap.sh skill taxonomy → `skills` + `roadmap_edges` |
 | 04 | `04_load_courses.py` | ~30 curated courses → `courses` |
 | 05 | `05_embed_all.py` | OpenAI `text-embedding-3-small` (768-dim Matryoshka) for skills / courses / jobs / trajectory snapshots |
-| 06 | `06_create_indexes.py` | Regular indexes + Atlas Vector Search indexes |
+| 06 | `06_create_indexes.py` | Regular indexes + 4 Atlas Vector Search indexes + 2 Atlas Search (full-text) indexes |
 | 07 | `07_compute_transitions.py` | Pre-compute traversable `skill_transitions` graph via aggregation `$out` |
 
 ### 4. Run both services
@@ -130,8 +131,8 @@ Phase 1 (parallel)
   └─ similarDevs        — $vectorSearch on snapshot embeddings, $setIntersection fallback
 
 Phase 2 (parallel, depends on Phase 1 gap)
-  ├─ courses-by-skill   — embedBatch top-3 missing skills, $vectorSearch on courses + hybrid ranking
-  ├─ salaryBand         — $facet on jobs (level / company / top skills) — VN VND
+  ├─ courses-by-skill   — Hybrid Search: $vectorSearch ⊕ $search on courses, fused via RRF
+  ├─ salaryBand         — $search (BM25) on jobs + $facet (level / company / top skills) — VN VND
   └─ salaryInference    — $unwind + $group on pivots_detected — median lift % post-pivot
 ```
 
@@ -164,7 +165,7 @@ Every recommendation carries a sample-size cap and a data-source badge.
 | `10 ≤ N < 30` | Amber **Low confidence** badge | Card still renders with a warning in the header |
 | `N < 10` | Red **Insufficient data** badge | Card is replaced by a *"Not enough data to recommend"* placeholder |
 
-Every card surfaces its **data sources** — `synthetic_vn`, `itviec_sample`, `skill_transitions`, `roadmap.sh`, `learn.mongodb.com` — and the **aggregation stages** it uses (`$vectorSearch`, `$graphLookup`, `$facet`, `$lookup`, …) so the recommendation is auditable end-to-end.
+Every card surfaces its **data sources** — `synthetic_vn`, `itviec_sample`, `skill_transitions`, `roadmap.sh`, `learn.mongodb.com` — and the **MongoDB stages** it uses (`$vectorSearch`, `$search`, `$graphLookup`, `$facet`, `$unionWith`, `$lookup`, …) so the recommendation is auditable end-to-end.
 
 The skill explain drawer goes one step further: clicking any missing skill returns the **actual MongoDB aggregation pipelines** that produced its evidence, ready to paste into your own cluster and reproduce.
 

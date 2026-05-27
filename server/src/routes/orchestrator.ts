@@ -250,5 +250,6 @@ function emptySalaryBand(targetRole: string): SalaryBandResult {
     top_companies: [],
     top_required_skills: [],
     source: 'itviec_sample',
+    retrieval: 'regex_fallback',
   };
 }
