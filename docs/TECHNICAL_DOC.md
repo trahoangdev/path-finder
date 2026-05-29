@@ -1297,13 +1297,13 @@ flowchart LR
     S5 --> S6
     S6["06 create_indexes<br/>regular + 4 vector + 2 search"]:::idx
     S6 --> S7
-    S7["07 compute_transitions<br/>$concatArrays + $out"]:::graph
+    S7["07 compute_transitions<br/>$concatArrays + $out"]:::graphn
     S7 --> ST[("skill_transitions")]
 
     classDef seed fill:#1e3a8a,stroke:#3b82f6,color:#fff
     classDef embed fill:#312e81,stroke:#6366f1,color:#fff
     classDef idx fill:#065f46,stroke:#10b981,color:#fff
-    classDef graph fill:#7c2d12,stroke:#f97316,color:#fff
+    classDef graphn fill:#7c2d12,stroke:#f97316,color:#fff
 ```
 
 ### 9.2 Bước 1 — sinh trajectory synthetic
