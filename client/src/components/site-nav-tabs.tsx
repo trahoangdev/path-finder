@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Activity, Compass, type LucideIcon } from "lucide-react"
+import { Compass, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "@/contexts/locale-context"
 
@@ -22,12 +22,6 @@ const TABS: NavTab[] = [
     labelKey: "common.careerPivot",
     icon: Compass,
     matchPrefix: "/pathfinder",
-  },
-  {
-    href: "/perf",
-    labelKey: "common.benchmark",
-    icon: Activity,
-    matchPrefix: "/perf",
   },
 ]
 

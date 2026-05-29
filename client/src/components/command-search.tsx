@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Command as CommandPrimitive } from "cmdk"
 import {
   Search,
-  Activity,
   Compass,
   Shield,
   User,
@@ -114,7 +113,6 @@ interface CommandSearchProps {
 
 const searchItems: SearchItem[] = [
   { title: "Career Pivot", url: "/pathfinder", group: "PathFinder", icon: Compass },
-  { title: "Benchmark", url: "/perf", group: "Tools", icon: Activity },
 
   { title: "Account", url: "/settings/account", group: "Settings", icon: User },
   { title: "Appearance", url: "/settings/appearance", group: "Settings", icon: Palette },
